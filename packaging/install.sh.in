@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Installs ADM for the current user only (no root): programs in ~/.local/bin, an icon, and a launcher entry so it
+# shows up in the app menu. Run it again to update; run it with --uninstall to remove everything it added.
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+bin="$HOME/.local/bin"
+apps="$HOME/.local/share/applications"
+icons="$HOME/.local/share/icons/hicolor"
+
+if [ "${1:-}" = "--uninstall" ]; then
+  rm -f "$bin/adm" "$bin/adm-dl" "$apps/adm.desktop" "$icons/128x128/apps/adm.png" "$icons/512x512/apps/adm.png"
+  command -v update-desktop-database >/dev/null && update-desktop-database "$apps" 2>/dev/null || true
+  echo "ADM removed. Your downloads and ADM's list (~/.local/share/dev.adm.downloadmanager) were left alone."
+  exit 0
+fi
+
+install -Dm755 "$here/adm" "$bin/adm"
+[ -f "$here/adm-dl" ] && install -Dm755 "$here/adm-dl" "$bin/adm-dl"
+install -Dm644 "$here/icons/128.png" "$icons/128x128/apps/adm.png"
+install -Dm644 "$here/icons/512.png" "$icons/512x512/apps/adm.png"
+
+mkdir -p "$apps"
+# The icon is a full path: some bars and launchers only look in theme folders that have an index.theme.
+cat > "$apps/adm.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=ADM
+GenericName=Download Manager
+Comment=Fast, lightweight download manager
+Keywords=ADM;Download;Downloader;Manager;Accelerator;Resume;
+Exec=$bin/adm %u
+Icon=$icons/512x512/apps/adm.png
+Terminal=false
+Categories=Network;FileTransfer;
+StartupWMClass=adm
+DESKTOP
+command -v update-desktop-database >/dev/null && update-desktop-database "$apps" 2>/dev/null || true
+
+echo "ADM installed to $bin. Search for \"ADM\" in your app launcher."
+case ":$PATH:" in *":$bin:"*) ;; *) echo "Note: $bin is not on your PATH; start it from the launcher or run $bin/adm." ;; esac
+if ldd "$bin/adm" 2>/dev/null | grep -q "not found"; then
+  echo "Missing libraries (ADM needs WebKitGTK 4.1):"; ldd "$bin/adm" | grep "not found"
+  echo "  Arch: pacman -S webkit2gtk-4.1   Debian/Ubuntu: apt install libwebkit2gtk-4.1-0   Fedora: dnf install webkit2gtk4.1"
+fi

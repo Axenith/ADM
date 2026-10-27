@@ -1,0 +1,25 @@
+:root { --bg: #f3f4f8; --card: #fff; --text: #161a23; --muted: #697086; --line: #e3e6ee; --accent: #0b6cff; --ok: #14966a; --bad: #dc3f55; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0e1117; --card: #161a22; --text: #e9ecf3; --muted: #8b93a7; --line: #262c38; --ok: #34c98b; --bad: #f06a7d; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, sans-serif; }
+main { max-width: 640px; margin: 0 auto; padding: 40px 20px 60px; }
+header { display: flex; gap: 16px; align-items: center; margin-bottom: 22px; }
+header img { border-radius: 14px; }
+h1 { margin: 0; font-size: 24px; } header p { margin: 2px 0 0; color: var(--muted); }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; }
+h2 { margin: 0 0 8px; font-size: 16px; }
+.tag { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 1px 8px; vertical-align: 2px; }
+p { margin: 8px 0; } ul { margin: 6px 0 0; padding-left: 20px; } li { margin: 4px 0; }
+.status { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; font-weight: 600; width: fit-content; }
+.status i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.status.ok i { background: var(--ok); } .status.off i { background: var(--bad); }
+button.primary { font: inherit; font-weight: 650; border: 0; border-radius: 10px; padding: 9px 18px; background: var(--accent); color: #fff; cursor: pointer; }
+button.primary:hover { filter: brightness(1.07); }
+.result { color: var(--muted); font-size: 13.5px; } .result.ok { color: var(--ok); font-weight: 600; }
+a { color: var(--accent); } .foot { color: var(--muted); font-size: 13px; text-align: center; margin-top: 22px; }
+
+label.check { display: flex; align-items: center; gap: 10px; margin: 6px 0; } label.check input { width: 17px; height: 17px; accent-color: var(--accent); }
+label.inline { display: flex; align-items: center; gap: 10px; margin: 8px 0 0; color: var(--muted); }
+label.inline input { width: 80px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); font: inherit; }
+.hint { color: var(--muted); font-size: 13px; }
+.line { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0 0; }

@@ -1,0 +1,13 @@
+<script>
+const mk=(id,name,status,extra={})=>({id,name,url:"https://x/"+name,status,error:null,downloaded:50,total:100,speed:0,eta:null,path:null,conns:0,segs:[],...extra});
+window.ROWS=[mk("1","movie.mkv","completed",{path:"/d/movie.mkv"}),mk("2","big.iso","downloading",{speed:1000,conns:8}),mk("3","bad.zip","failed",{error:"the server sent an invalid or refused response"}),mk("4","waiting.iso","queued",{downloaded:0})];
+window.__calls=[]; window.__listeners={};
+window.SETTINGS={max_connections:8,speed_limit_kib:0,download_dir:"/d",ask_before_download:true,sort_by_category:false,blocked_sites:["old.example"],remember_folder:true,last_folder:"/last/used",max_simultaneous:3};
+window.PROBE={name:"Probed Clip.mp4",size:46342963,resumable:true,category:"Video"}; window.FREE=3400000000;
+window.__TAURI__={core:{invoke:async(cmd,args)=>{window.__calls.push([cmd,args]);
+  if(cmd==="list")return window.ROWS; if(cmd==="get_settings")return window.SETTINGS; if(cmd==="list_pending")return [];
+  if(cmd==="probe_pending"){ if(window.PROBE_FAIL) throw "no route"; return window.PROBE; }
+  if(cmd==="free_space")return window.FREE; if(cmd==="browse_folder")return "/picked/folder"; if(cmd==="block_site")return "example.com";
+  return null;}},
+ event:{listen:(n,fn)=>{window.__listeners[n]=fn;}}};
+</script>

@@ -1,0 +1,38 @@
+:root { --bg: #fff; --text: #161a23; --muted: #697086; --line: #e3e6ee; --hover: #f3f5f9; --accent: #0b6cff; --ok: #14966a; --bad: #dc3f55; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161a22; --text: #e9ecf3; --muted: #8b93a7; --line: #262c38; --hover: #1d222c; --ok: #34c98b; --bad: #f06a7d; } }
+* { box-sizing: border-box; }
+body { width: 340px; margin: 0; background: var(--bg); color: var(--text); font: 13.5px/1.4 system-ui, sans-serif; }
+svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+button { font: inherit; color: inherit; cursor: pointer; }
+header { display: flex; align-items: center; gap: 9px; padding: 12px 14px; font-size: 15px; border-bottom: 1px solid var(--line); }
+header img { border-radius: 7px; }
+.pill { margin-left: auto; min-width: 24px; padding: 1px 8px; border-radius: 99px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; text-align: center; }
+.icon { margin-left: 0; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--muted); }
+.pill:not([hidden]) + .icon { margin-left: 0; } .pill[hidden] + .icon { margin-left: auto; }
+.icon:hover { background: var(--hover); color: var(--text); } .icon svg { width: 17px; height: 17px; }
+.banner { padding: 8px 14px; background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); font-size: 12.5px; font-weight: 600; }
+
+ul { list-style: none; margin: 0; padding: 4px 0; max-height: 292px; overflow-y: auto; }
+li { display: grid; grid-template-columns: 36px 1fr 30px; gap: 11px; align-items: center; padding: 8px 14px; }
+li:hover { background: var(--hover); }
+.ico { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--accent) 12%, var(--bg)); color: var(--accent); }
+.ico svg { width: 18px; height: 18px; }
+.title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 600; font-size: 13px; line-height: 1.3; word-break: break-word; }
+.sub { display: flex; align-items: center; gap: 7px; margin-top: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tag { padding: 0 6px; border-radius: 5px; background: color-mix(in srgb, var(--muted) 18%, transparent); font-weight: 700; font-size: 11px; letter-spacing: .3px; }
+.dl { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--muted); }
+.dl:hover:not(:disabled) { background: var(--accent); color: #fff; } .dl:disabled { opacity: .4; cursor: default; }
+.dl.done { color: var(--ok); } .dl svg { width: 17px; height: 17px; }
+.empty { margin: 0; padding: 22px 18px; color: var(--muted); text-align: center; font-size: 13px; }
+.listfoot { display: flex; justify-content: space-between; padding: 2px 8px; border-top: 1px solid var(--line); }
+.listfoot button { padding: 8px 8px; border: 0; background: none; color: var(--text); font-size: 13px; border-radius: 7px; }
+.listfoot button:hover { background: var(--hover); }
+.row { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 11px 14px; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; font-size: 13.5px; }
+button.row:hover { background: var(--hover); }
+.switchrow { cursor: pointer; }
+.switchrow input { position: absolute; opacity: 0; pointer-events: none; }
+.sw { position: relative; width: 38px; height: 22px; border-radius: 99px; background: color-mix(in srgb, var(--muted) 45%, transparent); transition: background .15s; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+input:checked + .sw { background: var(--accent); } input:checked + .sw::after { transform: translateX(16px); }
+input:focus-visible + .sw { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note { margin: 0; padding: 8px 14px 12px; color: var(--muted); font-size: 12px; }

@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  engine:
+    name: Engine tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The engine has no GUI dependencies, so this needs no system packages.
+      - run: cargo test -p adm-core --locked
+
+  extension:
+    name: Extension checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test extension/test/media.test.mjs extension/test/extension.test.mjs
+      # Validates the manifest and builds the package the Chrome Web Store would receive.
+      - run: python3 packaging/build-extension.py

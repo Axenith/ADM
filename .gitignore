@@ -1,0 +1,10 @@
+target/
+/dist/
+*.admpart
+*.state
+.DS_Store
+.directory
+node_modules/
+src-tauri/gen/
+*.zip
+*.tar.gz

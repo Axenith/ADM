@@ -1,0 +1,141 @@
+<script>
+const R={}, ck=(n,c)=>{R[n]=!!c;}, wait=(ms=30)=>new Promise(r=>setTimeout(r,ms));
+const liOf=(name)=>[...document.querySelectorAll("#list li")].find(l=>l.querySelector(".name").textContent===name);
+const btn=(li,title)=>li.querySelector('button[title="'+title+'"]');
+const txt=(li)=>[...li.querySelectorAll(".actions button")].map(b=>b.textContent.trim()||b.title);
+const last=()=>JSON.stringify(window.__calls[window.__calls.length-1]);
+const byText=(li,t)=>[...li.querySelectorAll("button.txt")].find(b=>b.textContent===t);
+setTimeout(async()=>{ try{
+  let done=liOf("movie.mkv"), run=liOf("big.iso"), bad=liOf("bad.zip");
+  ck("rows rendered",done&&run&&bad);
+  // --- Show in folder
+  btn(done,"Show in folder").click(); await wait(); ck("Show in folder (finished) calls reveal",last()==='["reveal",{"id":"1"}]');
+  btn(run,"Open download folder").click(); await wait(); ck("Open download folder (running) calls reveal",last()==='["reveal",{"id":"2"}]');
+  // --- finished download: explicit choices
+  btn(done,"Remove or delete\u2026").click(); await wait();
+  ck("finished: confirm shows the 3 choices",JSON.stringify(txt(done))==='["Remove from list","Move file to trash","Cancel"]');
+  window.__listeners.dl({payload:window.ROWS[0]}); await wait();
+  ck("confirm survives a progress update",JSON.stringify(txt(done))==='["Remove from list","Move file to trash","Cancel"]');
+  byText(done,"Cancel").click(); await wait(); ck("Cancel restores the icon buttons",txt(done).length===3&&!done.querySelector(".confirm"));
+  btn(done,"Remove or delete\u2026").click(); await wait(); byText(done,"Move file to trash").click(); await wait();
+  ck("Move file to trash calls remove with deleteFile",last()==='["remove",{"id":"1","deleteFile":true}]');
+  btn(done,"Remove or delete\u2026").click(); await wait(); byText(done,"Remove from list").click(); await wait();
+  ck("Remove from list calls remove WITHOUT deleteFile",last()==='["remove",{"id":"1"}]');
+  // --- running download: pause, and delete needs a confirm
+  btn(run,"Pause").click(); await wait(); ck("Pause calls pause",last()==='["pause",{"id":"2"}]');
+  btn(run,"Delete download").click(); await wait();
+  ck("running: confirm shows Delete download + Cancel",JSON.stringify(txt(run))==='["Delete download","Cancel"]');
+  ck("running: nothing deleted before confirming",!window.__calls.some(c=>c[0]==="remove"&&c[1].id==="2"));
+  byText(run,"Delete download").click(); await wait(); ck("Delete download calls remove",last()==='["remove",{"id":"2"}]');
+  // --- failed download: immediate
+  btn(bad,"Remove").click(); await wait(); ck("failed: Remove is immediate",last()==='["remove",{"id":"3"}]');
+  // --- the app answers with a "removed" event: the row goes away and the counts update
+  const n0=document.querySelectorAll("#list li").length;
+  window.__listeners.removed({payload:"3"}); await wait();
+  ck("removed event deletes the row",document.querySelectorAll("#list li").length===n0-1&&!liOf("bad.zip"));
+  ck("tab count updated",document.querySelector('#tabs [data-filter=all] b').textContent===String(n0-1));
+
+  // ================= the "New download" window =================
+  const $=(id)=>document.getElementById(id), nd=$("newdl");
+  // what is really drawn, not just the `hidden` attribute (a CSS `display` can override that)
+  const shown=(el)=>{ const r=el.getBoundingClientRect(); return getComputedStyle(el).display!=="none"&&r.width>0&&r.height>0; };
+  const pv=(id,extra={})=>({id,url:"https://example.com/v.mp4",name:"v.mp4",size:null,site:"example.com",category:"Video",base_dir:"/home/me/Downloads",sort:false,segments:8,...extra});
+  window.PROBE={name:"Probed Clip.mp4",size:46342963,resumable:true,category:"Video"};
+  window.__listeners["new-download"]({payload:pv("p1")}); await wait(150);
+  ck("dialog opens for a captured link",nd.open);
+  ck("offers 'don't capture' for the site",!$("nd-block").hidden&&$("nd-site").textContent==="example.com");
+  ck("the server's answer fills in the name",$("nd-name").value==="Probed Clip.mp4");
+  ck("...and the size",/44\.2 MB/.test($("nd-size").textContent));
+  ck("free space is shown",/Free space 3\.2 GB/.test($("nd-free").textContent)&&!$("nd-free").classList.contains("bad"));
+  ck("folder is the download folder",$("nd-dir").value==="/home/me/Downloads");
+  ck("connections default from settings",$("nd-seg").value==="8");
+  $("nd-cat").value="Music"; $("nd-cat").dispatchEvent(new Event("change")); await wait();
+  ck("choosing a category picks its folder",$("nd-dir").value==="/home/me/Downloads/Music");
+  $("nd-browse").click(); await wait();
+  ck("Browse puts the chosen folder in the box",$("nd-dir").value==="/picked/folder");
+  $("nd-name").value="My Clip.mp4"; $("nd-name").dispatchEvent(new Event("input")); $("nd-seg").value="4";
+  $("nd-go").click(); await wait();
+  ck("Download sends exactly what the window shows",last()===JSON.stringify(["confirm_pending",{id:"p1",name:"My Clip.mp4",baseDir:"/picked/folder",category:"",segments:4,remember:"/picked/folder"}]));
+  ck("the window closes after Download",!nd.open);
+
+  // the remembered folder is the one the user chose, not its category subfolder
+  window.__listeners["new-download"]({payload:pv("p1b")}); await wait(150);
+  $("nd-cat").value="Music"; $("nd-cat").dispatchEvent(new Event("change")); await wait();
+  $("nd-go").click(); await wait();
+  ck("a category subfolder is used, but the folder chosen is what gets remembered",last()===JSON.stringify(["confirm_pending",{id:"p1b",name:"Probed Clip.mp4",baseDir:"/home/me/Downloads/Music",category:"",segments:8,remember:"/home/me/Downloads"}]));
+  window.__listeners["new-download"]({payload:pv("p1c")}); await wait(150);
+  $("nd-dir").value="/typed/path"; $("nd-dir").dispatchEvent(new Event("input"));
+  $("nd-go").click(); await wait();
+  ck("a typed folder is remembered too",JSON.parse(last())[1].remember==="/typed/path"&&JSON.parse(last())[1].baseDir==="/typed/path");
+
+  // a name the user typed is not replaced by the server's answer
+  window.__listeners["new-download"]({payload:pv("p2")});
+  $("nd-name").value="Keep Me.mp4"; $("nd-name").dispatchEvent(new Event("input")); await wait(150);
+  ck("an edited name survives the server's answer",$("nd-name").value==="Keep Me.mp4");
+  // several links at once wait their turn
+  window.__listeners["new-download"]({payload:pv("p3",{name:"second.zip",category:"Compressed"})}); await wait();
+  ck("a second link waits (and says so)",$("nd-more").textContent==="1 more waiting");
+  $("nd-cancel").click(); await wait(150);
+  ck("Cancel calls cancel_pending for the first",window.__calls.some(c=>c[0]==="cancel_pending"&&c[1].id==="p2"));
+  ck("...and the next link takes its place",nd.open&&$("nd-name").value==="Probed Clip.mp4"&&$("nd-more").textContent==="");
+  // Esc declines
+  nd.dispatchEvent(new Event("cancel",{cancelable:true})); await wait(100);
+  ck("Esc declines too",window.__calls.some(c=>c[0]==="cancel_pending"&&c[1].id==="p3")&&!nd.open);
+  // Enter confirms
+  window.__listeners["new-download"]({payload:pv("p4")}); await wait(150);
+  $("nd-name").dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})); await wait(100);
+  ck("Enter starts the download",window.__calls.some(c=>c[0]==="confirm_pending"&&c[1].id==="p4"));
+  // not enough room is called out
+  window.FREE=1000; window.__listeners["new-download"]({payload:pv("p5",{size:5000000000})}); await wait(150);
+  ck("warns when the file does not fit",$("nd-free").classList.contains("bad")&&/not enough/.test($("nd-free").textContent));
+  // "Don't capture from this site"
+  $("nd-block").click(); await wait(100);
+  ck("Don't capture calls block_site and closes",window.__calls.some(c=>c[0]==="block_site"&&c[1].id==="p5")&&!nd.open);
+  ck("...and tells the user to start it again",[...document.querySelectorAll(".toast")].some(t=>/example\.com/.test(t.textContent)));
+  // a link that cannot be checked can still be downloaded
+  window.FREE=3400000000; window.PROBE_FAIL=true; window.__listeners["new-download"]({payload:pv("p6")}); await wait(150);
+  ck("an unreachable link shows a note but stays downloadable",!$("nd-note").hidden&&!$("nd-go").disabled&&$("nd-size").textContent==="Unknown size");
+  $("nd-x").click(); await wait(100); window.PROBE_FAIL=false;
+  ck("the close button declines",window.__calls.some(c=>c[0]==="cancel_pending"&&c[1].id==="p6")&&!nd.open);
+
+  // ================= adding links from the box =================
+  $("url").value="https://a.example/x.zip"; $("add").requestSubmit(); await wait(100);
+  ck("one link: the dialog setting decides (no override)",last()==='["add_download",{"url":"https://a.example/x.zip"}]');
+  $("url").value="https://a.example/1.zip https://a.example/2.zip"; $("add").requestSubmit(); await wait(100);
+  ck("several links: no dialog for each",JSON.stringify(window.__calls.slice(-2).map(c=>c[1].ask))==="[false,false]");
+
+
+  // ================= the download queue =================
+  const q=liOf("waiting.iso");
+  ck("a queued download says it is waiting",/Waiting in the queue/.test(q.querySelector(".meta").textContent)&&q.dataset.status==="queued");
+  ck("a queued download shows no percent",q.querySelector(".pct").textContent==="—");
+  btn(q,"Take out of the queue").click(); await wait(); ck("a queued download can be taken out of the queue",last()==='["pause",{"id":"4"}]');
+  btn(q,"Delete download").click(); await wait(); ck("deleting a queued download asks first",JSON.stringify(txt(q))==='["Delete download","Cancel"]'); byText(q,"Cancel").click(); await wait();
+  ck("queued downloads count as in progress",document.querySelector('#tabs [data-filter=progress] b').textContent==="2");
+  ck("the status bar mentions what is waiting",/1 waiting/.test(document.getElementById("st-left").textContent));
+
+  // ================= a group of links in one window =================
+  const calls0=window.__calls.length;
+  window.__listeners["new-download"]({payload:{id:"b1",url:"https://x/a.mp4",name:"3 files",size:3000000,site:"x.io",category:"",base_dir:"/home/me/Downloads",sort:false,segments:8,
+     batch:[{name:"One.mp4",size:1500000},{name:"Two.zip",size:null},{name:"Three.pdf",size:2500000}]}}); await wait(150);
+  ck("a group opens one window titled with the count",nd.open&&$("nd-title").textContent==="Download 3 files");
+  ck("single-file fields are really not drawn, the list is",!shown($("nd-file-row"))&&!shown($("nd-cat-row"))&&shown($("nd-batch")));
+  ck("every link is listed with its size",JSON.stringify([...document.querySelectorAll("#nd-batch-list li")].map(l=>l.children[0].textContent))==='["One.mp4","Two.zip","Three.pdf"]'&&/MB/.test($("nd-batch-list").children[0].children[1].textContent));
+  ck("the total size is shown",/MB/.test($("nd-size").textContent));
+  ck("a group is not looked up on the server",!window.__calls.slice(calls0).some(c=>c[0]==="probe_pending"));
+  ck("the group window fits inside a window of this size",(()=>{const r=nd.getBoundingClientRect(); return r.top>=0&&r.bottom<=innerHeight;})(),"dialog "+Math.round(nd.getBoundingClientRect().height)+"px in a "+innerHeight+"px window");
+  $("nd-seg").value="6"; $("nd-go").click(); await wait(100);
+  ck("Download sends the group with the chosen folder and connections (no file name needed)",last()===JSON.stringify(["confirm_pending",{id:"b1",name:"",baseDir:"/home/me/Downloads",category:"",segments:6,remember:"/home/me/Downloads"}]));
+  window.__listeners["new-download"]({payload:pv("p9")}); await wait(150);
+  ck("the next single link gets its own fields back",shown($("nd-file-row"))&&shown($("nd-cat-row"))&&!shown($("nd-batch"))&&$("nd-title").textContent==="New download");
+  $("nd-x").click(); await wait(80);
+
+  // ================= settings =================
+  document.getElementById("open-settings").click(); await wait(100);
+  ck("settings show the new options",$("s-simul").value==="3"&&$("s-ask").checked===true&&$("s-sort").checked===false&&$("s-remember").checked===true&&$("s-blocked").value==="old.example");
+  $("s-simul").value="5"; $("s-ask").checked=false; $("s-sort").checked=true; $("s-remember").checked=false; $("s-blocked").value="A.com\n  b.org  \n"; { const d=document.getElementById("settings"); d.close("save"); /* headless Chromium delays dialog 'close' events; fire it so the handler runs now */ d.dispatchEvent(new Event("close")); } await wait(150);
+  const saved=window.__calls.filter(c=>c[0]==="set_settings").pop()[1].settings;
+  ck("saving sends every option (the remembered folder is passed back unchanged)",saved.ask_before_download===false&&saved.sort_by_category===true&&saved.remember_folder===false&&saved.max_simultaneous===5&&saved.last_folder==="/last/used"&&JSON.stringify(saved.blocked_sites)==='["a.com","b.org"]'&&saved.max_connections===8);
+ }catch(e){R.EXCEPTION=String(e&&e.stack||e);}
+ document.body.setAttribute("data-result",JSON.stringify(R)); },500);
+</script>

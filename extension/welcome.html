@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADM extension</title>
+<link rel="stylesheet" href="welcome.css">
+</head>
+<body>
+<main>
+  <header><img src="icons/128.png" width="64" height="64" alt=""><div><h1>ADM extension is installed</h1><p>It sends your browser's downloads to the ADM app.</p></div></header>
+
+  <section>
+    <h2>1. ADM must be running</h2>
+    <p>This extension is only a bridge: the downloading is done by the <b>ADM app on your computer</b>. If ADM is not running, your browser keeps downloading files as usual, so nothing is lost.</p>
+    <div class="status" id="status"><i></i><span>Checking…</span></div>
+    <p><a id="home" hidden target="_blank" rel="noopener">Get ADM</a></p>
+  </section>
+
+  <section>
+    <h2>2. Logged-in downloads <span class="tag">optional</span></h2>
+    <p>Some downloads only work when you are signed in to the site. To make those work, ADM needs the same cookies your browser would send. This is <b>off</b> until you allow it, and the cookies go only to ADM on this computer.</p>
+    <button id="allow" class="primary" type="button">Allow login cookies</button>
+    <p class="result" id="result" role="status"></p>
+  </section>
+
+  <section id="monitoring">
+    <h2>3. Find videos on pages <span class="tag">optional</span></h2>
+    <p>With <b>browser monitoring</b> on, the toolbar icon lists the videos and audio a page loads, each with a download button. It only reads each response's type and size, and nothing leaves your computer.</p>
+    <button id="allow-mon" class="primary" type="button">Turn on browser monitoring</button>
+    <p class="result" id="mon-result" role="status"></p>
+  </section>
+
+  <section>
+    <h2>4. Using it</h2>
+    <ul>
+      <li>Start a download in the browser as usual: it opens in ADM instead.</li>
+      <li>Right-click a link, video or audio and choose <b>Download with ADM</b>.</li>
+      <li>Click the toolbar icon to see videos found on the page, or to <b>grab all the links</b> on it.</li>
+    </ul>
+  </section>
+
+  <p class="foot">Nothing is sent to any server on the internet by this extension. See the privacy policy in the store listing.</p>
+</main>
+<script type="module" src="welcome.js"></script>
+</body>
+</html>

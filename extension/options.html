@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADM settings</title>
+<link rel="stylesheet" href="welcome.css">
+</head>
+<body>
+<main>
+  <header><img src="icons/128.png" width="48" height="48" alt=""><div><h1>ADM settings</h1><p>For the browser extension. Most settings live in the ADM app itself.</p></div></header>
+
+  <section>
+    <h2>ADM</h2>
+    <div class="status" id="status"><i></i><span>Checking…</span></div>
+  </section>
+
+  <section>
+    <h2>Downloads</h2>
+    <label class="check"><input id="enabled" type="checkbox"><span>Send browser downloads to ADM</span></label>
+    <label class="inline"><span>Only files larger than</span><input id="min" type="number" min="0" step="1"><span>MB</span></label>
+    <p class="hint">0 sends everything. Smaller files stay in the browser.</p>
+  </section>
+
+  <section>
+    <h2>Login cookies</h2>
+    <p>Lets ADM download files that need you to be signed in, by passing it the cookies the site would see. Never sent anywhere but ADM on this computer.</p>
+    <div class="line"><b id="cookies-state">…</b><button id="cookies-btn" type="button" class="primary">…</button></div>
+    <p class="result" id="cookies-result" role="status"></p>
+  </section>
+
+  <section>
+    <h2>Browser monitoring</h2>
+    <p>Finds the videos and audio a page loads, so you can download them from the toolbar popup. It only reads each response's type and size, and keeps the list in memory for the tab.</p>
+    <div class="line"><b id="mon-state">…</b><button id="mon-btn" type="button" class="primary">…</button></div>
+    <p class="result" id="mon-result" role="status"></p>
+  </section>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>

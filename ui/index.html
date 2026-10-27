@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADM</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="logo.png" width="30" height="30" alt=""><span>ADM</span></div>
+  <form id="add" autocomplete="off">
+    <svg class="lead" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+    <input id="url" type="text" placeholder="Paste a link to download" spellcheck="false" autofocus>
+    <button class="primary" type="submit">Download</button>
+  </form>
+  <button id="open-settings" class="icon" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+  </button>
+</header>
+
+<nav class="tabs" id="tabs" aria-label="Filter downloads">
+  <button data-filter="all" class="on">All <b>0</b></button>
+  <button data-filter="progress">In progress <b>0</b></button>
+  <button data-filter="completed">Completed <b>0</b></button>
+  <button data-filter="failed">Failed <b>0</b></button>
+</nav>
+
+<main>
+  <ul id="list" data-filter="all"></ul>
+  <div id="empty" class="empty">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
+    <strong id="empty-title">No downloads yet</strong>
+    <span id="empty-sub">Paste a link above. Big files are split across several connections, so they finish sooner.</span>
+  </div>
+</main>
+
+<footer class="status">
+  <span id="st-left">Ready</span>
+  <span id="st-speed"></span>
+</footer>
+
+<div id="toasts" role="status" aria-live="polite"></div>
+
+<dialog id="newdl" aria-labelledby="nd-title">
+  <div class="nd-head"><h2 id="nd-title">New download</h2><button type="button" id="nd-x" class="icon" title="Cancel" aria-label="Cancel"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="nd-body">
+    <div class="nd-side"><div class="ftype" id="nd-icon"></div><div class="nd-size" id="nd-size">…</div></div>
+    <div class="nd-fields">
+      <label id="nd-file-row"><span>File</span><input id="nd-name" type="text" spellcheck="false"></label>
+      <div class="nd-batch" id="nd-batch" hidden><ul id="nd-batch-list"></ul></div>
+      <label id="nd-cat-row"><span>Category</span>
+        <select id="nd-cat">
+          <option value="">General</option><option>Video</option><option>Music</option><option>Documents</option><option>Compressed</option><option>Programs</option>
+        </select>
+      </label>
+      <label><span>Save to</span>
+        <div class="nd-path"><input id="nd-dir" type="text" spellcheck="false"><button type="button" id="nd-browse" class="icon" title="Browse…" aria-label="Browse for a folder"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button></div>
+      </label>
+      <div class="nd-free" id="nd-free"></div>
+      <label class="nd-inline"><span>Connections</span><input id="nd-seg" type="number" min="1" max="32"></label>
+      <button type="button" id="nd-block" class="linkbtn" hidden>Don't capture downloads from <b id="nd-site"></b></button>
+    </div>
+  </div>
+  <p class="nd-note" id="nd-note" hidden></p>
+  <div class="nd-foot"><span class="nd-more" id="nd-more"></span><button type="button" id="nd-cancel" class="ghost">Cancel</button><button type="button" id="nd-go" class="primary">Download</button></div>
+</dialog>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h2>Settings</h2>
+    <label>
+      <span>Connections per download</span>
+      <input id="s-conn" type="number" min="1" max="32">
+      <small>More connections finish big files sooner, up to what the server allows. 8 is a good default.</small>
+    </label>
+    <label>
+      <span>Downloads at the same time</span>
+      <input id="s-simul" type="number" min="0" max="20">
+      <small>The rest wait in the queue and start as others finish. 0 means no limit.</small>
+    </label>
+    <label>
+      <span>Speed limit (KiB/s)</span>
+      <input id="s-limit" type="number" min="0">
+      <small>0 means no limit. Shared by all downloads.</small>
+    </label>
+    <label>
+      <span>Download folder</span>
+      <input id="s-dir" type="text" spellcheck="false">
+    </label>
+    <label class="check"><input id="s-ask" type="checkbox"><span>Ask before starting a download</span><small>Shows the “New download” window for links from the browser and the link box.</small></label>
+    <label class="check"><input id="s-remember" type="checkbox"><span>Remember the folder I choose</span><small>New downloads start in the folder you used last time, instead of always in the download folder above.</small></label>
+    <label class="check"><input id="s-sort" type="checkbox"><span>Sort into folders by file type</span><small>Video, Music, Documents, Compressed and Programs go into their own folders.</small></label>
+    <label>
+      <span>Don't capture downloads from these sites</span>
+      <textarea id="s-blocked" rows="3" spellcheck="false" placeholder="one site per line, e.g. example.com"></textarea>
+      <small>The browser extension leaves these sites' downloads to the browser.</small>
+    </label>
+    <menu>
+      <button value="cancel" class="ghost">Cancel</button>
+      <button value="save" class="primary">Save</button>
+    </menu>
+  </form>
+</dialog>
+<script src="app.js"></script>
+</body>
+</html>

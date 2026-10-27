@@ -1,0 +1,15 @@
+[package]
+name = "adm-cli"
+version = "0.1.0"
+edition = "2024"
+description = "Command-line front end for the ADM download engine."
+license = "Apache-2.0"
+repository = "https://github.com/Axenith/ADM"
+
+[[bin]]
+name = "adm-dl"
+path = "src/main.rs"
+
+[dependencies]
+adm-core = { path = "../adm-core" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }

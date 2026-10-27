@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ADM</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header>
+  <img src="icons/48.png" width="26" height="26" alt=""><b>ADM</b>
+  <span id="count" class="pill" hidden>0</span>
+  <button id="gear" class="icon" type="button" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+</header>
+<div id="banner" class="banner" hidden></div>
+
+<ul id="list"></ul>
+<p id="empty" class="empty" hidden></p>
+<div id="listfoot" class="listfoot" hidden>
+  <button id="more" type="button">More formats</button>
+  <button id="clear" type="button">Clear list</button>
+</div>
+
+<button id="grab" class="row" type="button">Grab all links for this page…</button>
+<label class="row switchrow">
+  <span>Browser monitoring</span>
+  <input id="mon" type="checkbox" role="switch"><i class="sw" aria-hidden="true"></i>
+</label>
+<p id="note" class="note" hidden></p>
+<script type="module" src="popup.js"></script>
+</body>
+</html>

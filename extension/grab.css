@@ -1,0 +1,22 @@
+main.wide { max-width: 860px; padding-bottom: 90px; }
+.bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.chips button { font: inherit; font-size: 13px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 99px; background: var(--card); color: var(--text); cursor: pointer; }
+.chips button b { margin-left: 6px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+.chips button.on { background: var(--accent); border-color: var(--accent); color: #fff; } .chips button.on b { color: #fff; opacity: .85; }
+input[type=search] { font: inherit; padding: 7px 12px; width: 240px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); }
+input[type=search]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.tools { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.tools button { font: inherit; font-size: 13px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--text); cursor: pointer; }
+.tools button:hover { border-color: var(--accent); }
+.muted { color: var(--muted); font-size: 13px; } .center { text-align: center; padding: 30px 0; }
+ul#links { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+ul#links li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 14px; border-top: 1px solid var(--line); cursor: pointer; }
+ul#links li:first-child { border-top: 0; } ul#links li:hover { background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
+li input { width: 17px; height: 17px; accent-color: var(--accent); }
+li .name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+li .addr { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+li .tag { padding: 1px 8px; border-radius: 6px; background: color-mix(in srgb, var(--muted) 16%, transparent); font-size: 11.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; }
+footer.sticky { position: fixed; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 14px; justify-content: space-between; padding: 12px max(20px, calc(50% - 410px)); background: var(--card); border-top: 1px solid var(--line); }
+footer.sticky #picked { font-weight: 650; } footer.sticky .muted { margin-right: auto; }
+button.primary:disabled { opacity: .45; cursor: default; filter: none; }
