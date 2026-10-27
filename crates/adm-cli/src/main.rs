@@ -1,12 +1,23 @@
-//! `adm <url>`: a thin command-line front end over adm-core. Re-running the same command
-//! resumes an interrupted download (Ctrl-C pauses and saves progress).
+//! `adm-dl <url>`: a thin command-line front end over adm-core. Re-running the same command
+//! resumes an interrupted download (Ctrl-C pauses and saves progress). `adm-dl mcp` serves the same engine to
+//! AI agents over the Model Context Protocol.
+
+mod jobs;
+mod mcp;
 
 use adm_core::{DownloadRequest, Engine, EngineConfig, Event, Outcome};
-use std::io::Write;
+use jobs::{human, sha256_file, stable_id, state_dir};
+use serde_json::json;
+use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::{Duration, Instant};
 
-const USAGE: &str = "usage: adm <url> [-o DIR] [-c CONNECTIONS] [--limit KIB_PER_SEC] [-H 'Name: value']... [--insecure]";
+const USAGE: &str = "usage: adm-dl <url> [-o DIR] [-n NAME] [-c CONNECTIONS] [--limit KIB_PER_SEC] [-H 'Name: value']... [--sha256 HEX] [--json] [--insecure]
+       adm-dl mcp        serve ADM to AI agents (Model Context Protocol, stdio)
+
+  --json     print one JSON line on stdout when done: {\"status\":\"completed\",\"path\":...,\"size_bytes\":...}
+  exit code  0 done, 1 failed, 2 bad usage, 130 paused (run the same command to resume)";
 
 struct Args {
     url: String,
@@ -15,6 +26,9 @@ struct Args {
     limit_kib: u64,
     headers: Vec<(String, String)>,
     insecure: bool,
+    name: Option<String>,
+    sha256: Option<String>,
+    json: bool,
 }
 
 fn parse() -> Result<Args, String> {
@@ -26,6 +40,9 @@ fn parse() -> Result<Args, String> {
         limit_kib: 0,
         headers: Vec::new(),
         insecure: false,
+        name: None,
+        sha256: None,
+        json: false,
     };
     while let Some(arg) = it.next() {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
@@ -38,6 +55,15 @@ fn parse() -> Result<Args, String> {
                 let (k, v) = h.split_once(':').ok_or("-H needs 'Name: value'")?;
                 a.headers.push((k.trim().into(), v.trim().into()));
             }
+            "-n" | "--name" => a.name = Some(adm_core::sanitize_file_name(&value("-n")?)),
+            "--sha256" => {
+                let h = value("--sha256")?.to_ascii_lowercase();
+                if h.len() != 64 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    return Err("--sha256 needs 64 hex characters".into());
+                }
+                a.sha256 = Some(h);
+            }
+            "--json" => a.json = true,
             "--insecure" => a.insecure = true,
             "-h" | "--help" => return Err(USAGE.into()),
             s if s.starts_with('-') => return Err(format!("unknown option {s}\n{USAGE}")),
@@ -51,34 +77,6 @@ fn parse() -> Result<Args, String> {
     Ok(a)
 }
 
-/// Same URL and folder give the same id, so running the command again finds the saved state.
-fn stable_id(url: &str, dir: &std::path::Path) -> u64 {
-    let mut h: u64 = 0xcbf29ce484222325; // FNV-1a
-    for b in url.bytes().chain(dir.to_string_lossy().bytes()) {
-        h = (h ^ b as u64).wrapping_mul(0x100000001b3);
-    }
-    h
-}
-
-fn state_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("APPDATA").map(PathBuf::from))
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("adm").join("state")
-}
-
-fn human(n: f64) -> String {
-    const U: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-    let (mut v, mut i) = (n, 0);
-    while v >= 1024.0 && i < U.len() - 1 {
-        v /= 1024.0;
-        i += 1;
-    }
-    format!("{v:.1} {}", U[i])
-}
-
 fn eta(secs: Option<u64>) -> String {
     match secs {
         Some(s) if s >= 3600 => format!("{}h{:02}m", s / 3600, s % 3600 / 60),
@@ -90,6 +88,9 @@ fn eta(secs: Option<u64>) -> String {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        return mcp::run().await;
+    }
     let args = match parse() {
         Ok(a) => a,
         Err(m) => {
@@ -109,8 +110,15 @@ async fn main() -> ExitCode {
     };
     engine.speed_limiter().set_limit(args.limit_kib * 1024);
 
+    // A terminal gets one live line; anything else (an agent, a log file) gets a plain line every few seconds
+    // instead of a carriage-return storm.
+    let live = std::io::stderr().is_terminal();
+    let mut last_line = Instant::now() - Duration::from_secs(60);
+
     let mut req = DownloadRequest::new(stable_id(&args.url, &args.dir), &args.url, &args.dir);
     req.headers = args.headers;
+    req.file_name = args.name;
+    let started = Instant::now();
     let (handle, mut events) = engine.start(req);
 
     let mut ctrl_c = Box::pin(tokio::signal::ctrl_c());
@@ -126,8 +134,13 @@ async fn main() -> ExitCode {
                 Ok(Event::Progress(p)) => {
                     let pct = p.total.filter(|t| *t > 0).map_or(String::new(), |t| format!("{:5.1}%  ", p.downloaded as f64 * 100.0 / t as f64));
                     let active = p.segments.iter().filter(|s| s.downloaded < s.length).count();
-                    eprint!("\r{pct}{}  {}/s  eta {}  [{active} conn]   ", human(p.downloaded as f64), human(p.speed), eta(p.eta_secs));
-                    let _ = std::io::stderr().flush();
+                    if live {
+                        eprint!("\r{pct}{}  {}/s  eta {}  [{active} conn]   ", human(p.downloaded as f64), human(p.speed), eta(p.eta_secs));
+                        let _ = std::io::stderr().flush();
+                    } else if last_line.elapsed() >= Duration::from_secs(5) {
+                        last_line = Instant::now();
+                        eprintln!("{}{}  {}/s  eta {}  [{active} conn]", pct.trim_start(), human(p.downloaded as f64), human(p.speed), eta(p.eta_secs));
+                    }
                 }
                 Ok(Event::Completed(_) | Event::Paused | Event::Failed(_)) | Err(_) => break,
             },
@@ -135,15 +148,42 @@ async fn main() -> ExitCode {
     }
     match handle.wait().await {
         Outcome::Completed(f) => {
+            let mut sha = None;
+            if let Some(want) = &args.sha256 {
+                let path = f.path.clone();
+                let got = tokio::task::spawn_blocking(move || sha256_file(&path)).await.ok().and_then(Result::ok);
+                if got.as_deref() != Some(want.as_str()) {
+                    let msg = format!("checksum mismatch: expected {want}, the file has {}. It is kept at {}; do not use it", got.as_deref().unwrap_or("(unreadable)"), f.path.display());
+                    if args.json {
+                        println!("{}", json!({ "status": "failed", "error": msg, "path": f.path.display().to_string(), "sha256": got }));
+                    }
+                    eprintln!("\nfailed: {msg}");
+                    return ExitCode::FAILURE;
+                }
+                sha = got;
+            }
+            let secs = started.elapsed().as_secs_f64();
             eprintln!("\ndone: {} ({})", f.path.display(), human(f.size as f64));
+            if args.json {
+                println!("{}", json!({
+                    "status": "completed", "path": f.path.display().to_string(), "size_bytes": f.size, "sha256": sha,
+                    "seconds": (secs * 10.0).round() / 10.0, "avg_speed_bytes_per_sec": if secs > 0.0 { (f.size as f64 / secs).round() } else { 0.0 },
+                }));
+            }
             ExitCode::SUCCESS
         }
         Outcome::Paused => {
             eprintln!("paused; run the same command to resume");
+            if args.json {
+                println!("{}", json!({ "status": "paused", "hint": "run the same command to resume" }));
+            }
             ExitCode::from(130)
         }
         Outcome::Failed(e) => {
             eprintln!("\nfailed: {e}");
+            if args.json {
+                println!("{}", json!({ "status": "failed", "error": e.to_string() }));
+            }
             ExitCode::FAILURE
         }
     }

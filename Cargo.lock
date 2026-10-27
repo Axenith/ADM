@@ -26,6 +26,8 @@ name = "adm-cli"
 version = "0.1.0"
 dependencies = [
  "adm-core",
+ "serde_json",
+ "sha2",
  "tokio",
 ]
 

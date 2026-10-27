@@ -8,6 +8,8 @@ bin="$root/target/release/adm"
 [ -x "$bin" ] || { echo "Build it first:  cargo build --release -p adm" >&2; exit 1; }
 
 install -Dm755 "$bin" "$HOME/.local/bin/adm"
+# The command-line downloader and the MCP server for AI agents (`adm-dl mcp`), if it was built.
+[ -x "$root/target/release/adm-dl" ] && install -Dm755 "$root/target/release/adm-dl" "$HOME/.local/bin/adm-dl"
 install -Dm644 "$root/src-tauri/icons/128x128.png" "$HOME/.local/share/icons/hicolor/128x128/apps/adm.png"
 install -Dm644 "$root/src-tauri/icons/icon.png"    "$HOME/.local/share/icons/hicolor/512x512/apps/adm.png"
 

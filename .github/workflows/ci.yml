@@ -24,6 +24,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test extension/test/media.test.mjs extension/test/extension.test.mjs
+      - run: node --test extension/test/basic.test.mjs extension/test/enhanced.test.mjs extension/test/media.test.mjs
       # Validates the manifest and builds the package the Chrome Web Store would receive.
       - run: python3 packaging/build-extension.py
+
+  agents:
+    name: MCP server and CLI for AI agents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Needs no GUI: the server, the CLI and a local file server.
+      - run: cargo build --release -p adm-cli --locked
+      - run: python3 tests/e2e/agent_mcp.py
