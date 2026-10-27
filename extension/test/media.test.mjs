@@ -1,8 +1,10 @@
 // The pure logic: what counts as a video, how big it is, naming, and sorting a page's links.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MAX_PER_TAB, MIN_MEDIA_BYTES, addEntry, classify, formatSize, mediaFileName } from "../media.js";
+import { MAX_PER_TAB, MIN_MEDIA_BYTES, addEntry, classify, formatSize, isStreamPiece, mediaFileName } from "../media.js";
 import { classifyLink } from "../grab-lib.js";
+import { capturedByRules, toReplay } from "../adm.js";
+import { isNoise, makeMatcher } from "../grab-lib.js";
 
 const resp = (url, mime, extra = {}) => ({
   url, statusCode: 200, tabId: 1,
@@ -100,4 +102,58 @@ test("a page's links are sorted by what they probably are", () => {
   assert.equal(k("https://x.io/data.bin"), "other", "an unknown extension is still a file");
   assert.equal(classifyLink("https://x.io/My%20File.zip").name, "My File.zip");
   assert.equal(classifyLink("not a url").kind, "page");
+});
+
+test("pieces of a stream are never listed as videos", () => {
+  // What a YouTube page's player fetches: slices of one stream, from video servers.
+  assert.equal(isStreamPiece("https://rr3---sn-abc.googlevideo.com/videoplayback?expire=1&itag=22&range=0-1048575&rn=1&rbuf=2000"), true);
+  assert.equal(isStreamPiece("https://www.youtube.com/watch?v=abc"), true);
+  assert.equal(isStreamPiece("https://youtu.be/abc"), true);
+  assert.equal(isStreamPiece("https://cdn.example/v/clip.mp4?bytestart=100&byteend=2000"), true);
+  assert.equal(isStreamPiece("https://cdn.example/v/clip.mp4?sq=12"), true);
+  assert.equal(isStreamPiece("https://cdn.example/v/seg-12.mp4"), true);
+  assert.equal(isStreamPiece("https://cdn.example/v/chunk_003.m4s"), true);
+  // Ordinary files, including ones with token parameters, are not slices.
+  assert.equal(isStreamPiece("https://cdn.example/v/clip.mp4?token=abc&expires=17"), false);
+  assert.equal(isStreamPiece("https://example.com/movies/segment.mp4"), false, "a name that merely contains 'segment'");
+  assert.equal(isStreamPiece("https://notyoutube.com/a.mp4"), false, "a different site");
+  assert.equal(classify({ url: "https://rr3.googlevideo.com/videoplayback?range=0-999999", statusCode: 206, responseHeaders: [{ name: "Content-Type", value: "video/mp4" }, { name: "Content-Range", value: "bytes 0-999999/9999999" }] }), null);
+});
+
+test("capture rules: listed types, or big files", () => {
+  const rules = { fileExts: ["ZIP", "MP4"], captureOverMB: 10 };
+  assert.equal(capturedByRules({ url: "https://x/a", filename: "/d/A.Zip" }, rules), true, "case does not matter");
+  assert.equal(capturedByRules({ url: "https://x/a.mp4" }, rules), true, "the name comes from the address when the browser gave none");
+  assert.equal(capturedByRules({ url: "https://x/a.txt", filename: "a.txt", fileSize: 1000 }, rules), false);
+  assert.equal(capturedByRules({ url: "https://x/a.txt", filename: "a.txt", fileSize: 10 * 1048576 }, rules), true, "exactly the limit counts");
+  assert.equal(capturedByRules({ url: "https://x/a.txt", filename: "a.txt", fileSize: 10 * 1048576 - 1 }, rules), false);
+  assert.equal(capturedByRules({ url: "https://x/a.txt", filename: "a.txt" }, {}), true, "no rules published: everything");
+  assert.equal(capturedByRules({ url: "https://x/a.txt", filename: "a.txt" }, { fileExts: [] }), false, "an empty list is a rule too");
+});
+
+test("replayed headers: what a download manager needs, and the cookie apart", () => {
+  const r = toReplay([{ name: "COOKIE", value: "a=1" }, { name: "Referer", value: "https://x/" }, { name: "sec-ch-ua", value: "x" }, { name: "X-Dup", value: "1" }, { name: "x-dup", value: "2" }, { name: "Host", value: "h" }]);
+  assert.equal(r.cookie, "a=1");
+  assert.deepEqual(r.headers, { Referer: ["https://x/"], "X-Dup": ["1"], "x-dup": ["2"] });
+  assert.deepEqual(toReplay(undefined), { headers: {}, cookie: undefined });
+});
+
+test("the grab filter: words, wildcard patterns and regular expressions", () => {
+  const l = (url, text = "") => ({ url, text, name: decodeURIComponent(url.split("/").pop()) });
+  assert.equal(makeMatcher("")(l("https://a/x")), true);
+  assert.equal(makeMatcher("holiday jpg")(l("https://a/holiday-1.jpg")), true, "every word, in any order");
+  assert.equal(makeMatcher("holiday jpg")(l("https://a/holiday-1.png")), false);
+  assert.equal(makeMatcher("trip")(l("https://a/x.zip", "My Trip")), true, "the link text counts, any case");
+  assert.equal(makeMatcher("*.jpg")(l("https://a/b/x.JPG")), true);
+  assert.equal(makeMatcher("*.jpg")(l("https://a/b/x.jpg?size=big")), false, "a pattern is the whole name");
+  assert.equal(makeMatcher("img_??.png")(l("https://a/img_07.png")), true);
+  assert.equal(makeMatcher("a+b.zip")(l("https://a/a+b.zip")), true, "no wildcard: plain words, nothing is a pattern");
+  assert.equal(makeMatcher("a+b*")(l("https://a/a+b.zip")), true, "regex characters in a pattern are literal");
+  assert.equal(makeMatcher("/\\.(png|gif)$/")(l("https://a/x.GIF")), true);
+  assert.equal(makeMatcher("/(/")(l("https://a/x")), false, "a broken expression matches nothing instead of throwing");
+});
+
+test("ads, trackers and favicons are noise; real files are not", () => {
+  for (const u of ["https://www.google-analytics.com/collect?v=1", "https://ad.doubleclick.net/x.gif", "https://a.example/pixel.gif", "https://a.example/favicon.ico", "https://a.example/p?utm_source=x"]) assert.equal(isNoise(u), true, u);
+  for (const u of ["https://a.example/movie.mp4", "https://cdn.example/archive.zip", "not a url"]) assert.equal(isNoise(u), false, u);
 });

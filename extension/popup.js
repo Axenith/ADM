@@ -1,5 +1,5 @@
 import { admState, handOver, monitoringAccess, settings } from "./adm.js";
-import { collectLinks } from "./grab-lib.js";
+import { openGrab } from "./grab-open.js";
 import { formatSize, mediaFileName, mediaKey } from "./media.js";
 
 const $ = (id) => document.getElementById(id);
@@ -75,7 +75,7 @@ function row(item) {
 }
 
 async function download(item, button) {
-  const ok = await handOver({ url: item.url, referrer: tab?.url, filename: mediaFileName(item, tab?.title), fileSize: item.size, mime: item.mime });
+  const ok = await handOver({ url: item.url, referrer: tab?.url, filename: mediaFileName(item, tab?.title), fileSize: item.size, mime: item.mime, replay: item.replay });
   if (!ok) return say("Couldn't reach ADM. Is it running?");
   say("");
   button.classList.add("done");
@@ -101,10 +101,7 @@ $("gear").addEventListener("click", () => chrome.runtime.openOptionsPage());
 
 $("grab").addEventListener("click", async () => {
   try {
-    // Reads the page's links only now, because the user asked (the permission is `activeTab`).
-    const [found] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: collectLinks });
-    await chrome.storage.session.set({ grab: { ...found.result, tabId: tab.id, at: Date.now() } });
-    await chrome.tabs.create({ url: chrome.runtime.getURL("grab.html") });
+    await openGrab(tab.id);
     window.close();
   } catch {
     say("Can't read the links on this page (browser pages are off limits).");

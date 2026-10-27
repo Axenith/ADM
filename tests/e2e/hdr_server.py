@@ -9,6 +9,8 @@ class H(http.server.BaseHTTPRequestHandler):
         with open(os.environ.get("HDR_LOG", "/tmp/adm-hdr.log"), "a") as f:
             f.write(json.dumps({"path": self.path, "cookie": self.headers.get("Cookie"), "referer": self.headers.get("Referer"),
                                 "ua": self.headers.get("User-Agent"), "range": rng, "inm": self.headers.get("If-None-Match"), "ae": self.headers.get("Accept-Encoding"), "custom": self.headers.get("X-Custom"), "auth": self.headers.get("Authorization")}) + "\n")
+        if self.path.startswith("/gone/"):  # a file that is no longer there
+            self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers(); return
         start, end = 0, SIZE - 1
         if rng and rng.startswith("bytes="):
             a, b = rng[6:].split("-"); start = int(a); end = int(b) if b else SIZE - 1

@@ -2,8 +2,9 @@
   "manifest_version": 3,
   "name": "ADM Download Manager",
   "short_name": "ADM",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Sends your browser's downloads to the ADM app: a fast, lightweight download manager with multi-connection speed and resume.",
+  "homepage_url": "https://github.com/Axenith/ADM",
   "minimum_chrome_version": "110",
   "icons": {
     "16": "icons/16.png",
@@ -40,6 +41,12 @@
       "16": "icons/16.png",
       "32": "icons/32.png",
       "48": "icons/48.png"
+    }
+  },
+  "commands": {
+    "grab-links": {
+      "suggested_key": { "default": "Alt+Shift+G" },
+      "description": "Grab the links and files of this page"
     }
   },
   "options_ui": {

@@ -132,10 +132,10 @@ setTimeout(async()=>{ try{
 
   // ================= settings =================
   document.getElementById("open-settings").click(); await wait(100);
-  ck("settings show the new options",$("s-simul").value==="3"&&$("s-ask").checked===true&&$("s-sort").checked===false&&$("s-remember").checked===true&&$("s-blocked").value==="old.example");
-  $("s-simul").value="5"; $("s-ask").checked=false; $("s-sort").checked=true; $("s-remember").checked=false; $("s-blocked").value="A.com\n  b.org  \n"; { const d=document.getElementById("settings"); d.close("save"); /* headless Chromium delays dialog 'close' events; fire it so the handler runs now */ d.dispatchEvent(new Event("close")); } await wait(150);
+  ck("settings show the new options",$("s-simul").value==="3"&&$("s-types").value==="zip iso mp4"&&$("s-over").value==="20"&&$("s-ask").checked===true&&$("s-sort").checked===false&&$("s-remember").checked===true&&$("s-blocked").value==="old.example");
+  $("s-simul").value="5"; $("s-types").value="Zip, .RAR\n 7z"; $("s-over").value="50"; $("s-ask").checked=false; $("s-sort").checked=true; $("s-remember").checked=false; $("s-blocked").value="A.com\n  b.org  \n"; { const d=document.getElementById("settings"); d.close("save"); /* headless Chromium delays dialog 'close' events; fire it so the handler runs now */ d.dispatchEvent(new Event("close")); } await wait(150);
   const saved=window.__calls.filter(c=>c[0]==="set_settings").pop()[1].settings;
-  ck("saving sends every option (the remembered folder is passed back unchanged)",saved.ask_before_download===false&&saved.sort_by_category===true&&saved.remember_folder===false&&saved.max_simultaneous===5&&saved.last_folder==="/last/used"&&JSON.stringify(saved.blocked_sites)==='["a.com","b.org"]'&&saved.max_connections===8);
+  ck("saving sends every option (the remembered folder is passed back unchanged)",saved.ask_before_download===false&&saved.sort_by_category===true&&saved.remember_folder===false&&saved.max_simultaneous===5&&JSON.stringify(saved.capture_extensions)==='["Zip","RAR","7z"]'&&saved.capture_over_mb===50&&saved.last_folder==="/last/used"&&JSON.stringify(saved.blocked_sites)==='["a.com","b.org"]'&&saved.max_connections===8);
  }catch(e){R.EXCEPTION=String(e&&e.stack||e);}
  document.body.setAttribute("data-result",JSON.stringify(R)); },500);
 </script>

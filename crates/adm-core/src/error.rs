@@ -6,8 +6,12 @@ use serde::{Deserialize, Serialize};
 pub enum DownloadError {
     #[error("network error")]
     Network,
-    #[error("the server sent an invalid or refused response")]
+    /// A reply that does not make sense (e.g. a part of the file from the wrong place).
+    #[error("the server sent a reply ADM could not use")]
     InvalidResponse,
+    /// The server answered with an HTTP status that asking again will not change (404, 403, ...).
+    #[error("{}", http_message(*.0))]
+    Http(u16),
     #[error("session expired")]
     SessionExpired,
     /// Part of the file arrived, then the server started refusing the link (403/410/401).
@@ -27,4 +31,34 @@ pub enum DownloadError {
     OutputWrite,
 }
 
+/// What an HTTP status means to someone who just wants their file, with the code kept for the curious.
+pub fn http_message(code: u16) -> String {
+    match code {
+        400 => "The server rejected the request (HTTP 400)".into(),
+        401 => "The server wants you to sign in (HTTP 401)".into(),
+        403 => "Access denied (HTTP 403). The link may need you to be signed in, or may have expired".into(),
+        404 => "Not found on the server (HTTP 404)".into(),
+        410 => "The file is no longer available (HTTP 410)".into(),
+        416 => "The server could not give the requested part of the file (HTTP 416)".into(),
+        500..=599 => format!("The server had an error (HTTP {code})"),
+        _ => format!("The server answered with HTTP {code}"),
+    }
+}
+
 pub type Result<T> = std::result::Result<T, DownloadError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn http_errors_say_what_the_server_answered() {
+        assert_eq!(DownloadError::Http(404).to_string(), "Not found on the server (HTTP 404)");
+        assert!(DownloadError::Http(403).to_string().contains("HTTP 403") && DownloadError::Http(403).to_string().contains("signed in"));
+        assert_eq!(DownloadError::Http(503).to_string(), "The server had an error (HTTP 503)");
+        assert_eq!(DownloadError::Http(418).to_string(), "The server answered with HTTP 418");
+        // The code survives being saved and sent to the interface.
+        let json = serde_json::to_string(&DownloadError::Http(410)).unwrap();
+        assert_eq!(serde_json::from_str::<DownloadError>(&json).unwrap(), DownloadError::Http(410));
+    }
+}

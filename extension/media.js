@@ -17,6 +17,22 @@ const MIME_LABEL = {
   "audio/aac": "AAC", "audio/ogg": "OGG", "audio/wav": "WAV", "audio/x-wav": "WAV", "audio/flac": "FLAC", "audio/webm": "WEBM",
 };
 
+// Sites that deliver video as many separate pieces (YouTube and its video servers). What the browser fetches there is
+// a slice of one stream, not a file: listing the slices would show junk, and downloading one gives a broken file.
+const STREAMING_HOSTS = ["youtube.com", "youtu.be", "googlevideo.com", "youtube-nocookie.com"];
+// Parameters that say "this is a slice": a byte range in the address, a segment number, a player buffer hint.
+const SLICE_PARAMS = /[?&](?:bytestart|byteend|sq|rbuf)=|[?&]range=\d+-\d*(?:&|$)/i;
+const SLICE_PATH = /(?:^|[\/_.-])(?:seg|segment|frag|fragment|chunk)[-_]?\d+\.(?:mp4|m4s|ts|webm|aac|m4a)$/i;
+
+/** Whether an address is a slice of a stream (or from a site that only serves streams) rather than a whole file. */
+export function isStreamPiece(url) {
+  let u;
+  try { u = new URL(url); } catch { return true; }
+  const host = u.hostname.toLowerCase();
+  if (STREAMING_HOSTS.some((h) => host === h || host.endsWith("." + h))) return true;
+  return SLICE_PARAMS.test(u.search) || SLICE_PATH.test(u.pathname);
+}
+
 const pathOf = (url) => { try { return new URL(url).pathname; } catch { return ""; } };
 const header = (headers, name) => headers?.find((h) => h.name.toLowerCase() === name)?.value;
 
@@ -28,7 +44,7 @@ export function classify(details) {
   if (details.statusCode !== 200 && details.statusCode !== 206) return null;
   if (!/^https?:/i.test(details.url || "")) return null;
   const path = pathOf(details.url);
-  if (STREAM_EXT.test(path)) return null;
+  if (STREAM_EXT.test(path) || isStreamPiece(details.url)) return null;
   const mime = (header(details.responseHeaders, "content-type") || "").split(";")[0].trim().toLowerCase();
   if (/mpegurl|dash\+xml/.test(mime)) return null;
 

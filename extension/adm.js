@@ -127,13 +127,47 @@ export function wantsCapture(item, s) {
 }
 
 /**
+ * Whether ADM's capture rules (set in ADM's Settings, sent with `/sync`) want this download: its file type is on the
+ * list, or it is at least `captureOverMB` big. An ADM that does not send rules takes everything, as before.
+ */
+export function capturedByRules(item, adm) {
+  if (!Array.isArray(adm?.fileExts)) return true;
+  let name = baseName(item.filename);
+  if (!name) { try { name = decodeURIComponent(new URL(item.url).pathname.split("/").pop() || ""); } catch { name = ""; } }
+  const ext = /\.([A-Za-z0-9]+)$/.exec(name)?.[1]?.toUpperCase();
+  if (ext && adm.fileExts.includes(ext)) return true;
+  const over = Number(adm.captureOverMB) || 0;
+  return over > 0 && item.fileSize > 0 && item.fileSize >= over * 1048576;
+}
+
+// Headers a browser adds for itself. They mean nothing to a download manager (or would change how a server answers),
+// and ADM sets its own range and encoding. `Cookie` is handled apart.
+const NOT_REPLAYED = /^(cookie|host|connection|content-length|content-type|origin|range|if-.+|sec-.+|upgrade-insecure-requests|accept-encoding|priority|te|dnt|pragma|cache-control)$/i;
+
+/** What the browser really sent for a request: `{ headers: { Name: [value] }, cookie }`, ready for ADM. */
+export function toReplay(requestHeaders) {
+  const headers = {};
+  let cookie;
+  for (const { name, value } of requestHeaders || []) {
+    if (value == null) continue;
+    if (name.toLowerCase() === "cookie") cookie = value;
+    else if (!NOT_REPLAYED.test(name)) (headers[name] ||= []).push(value);
+  }
+  return { headers, cookie };
+}
+
+/**
  * Gives ADM the link plus what the browser knows: the cookies the site would see (if allowed), the page it came
  * from, the name the browser chose. Resolves true only if ADM accepted it.
  */
-export async function handOver({ url, referrer, filename, fileSize, mime }) {
+export async function handOver({ url, referrer, filename, fileSize, mime, replay }) {
   const body = {
     url,
-    cookie: await cookiesFor(url),
+    // The cookies the browser really sent, when it was watched; else the ones it would send (if allowed).
+    // (The browser does not always show a download's cookies to extensions (a download started by a click is reported
+    // with almost no headers), so what it did show wins, and the cookie jar fills the gap.)
+    cookie: replay?.cookie ?? await cookiesFor(url),
+    requestHeaders: replay?.headers,
     filename: baseName(filename),
     fileSize: fileSize > 0 ? fileSize : undefined,
     referer: referrer || undefined,

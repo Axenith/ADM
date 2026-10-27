@@ -127,7 +127,7 @@ impl Coord {
                 Err(ConnectErr::Fatal(e)) => return Err(failed(e)),
                 // 416 to `bytes=0-` means an empty file: ask again without a range.
                 Err(ConnectErr::Status(416)) if probe_ranged => probe_ranged = false,
-                Err(ConnectErr::Status(_)) => return Err(failed(DownloadError::InvalidResponse)),
+                Err(ConnectErr::Status(code)) => return Err(failed(DownloadError::Http(code))),
             }
         };
 
@@ -380,7 +380,8 @@ impl Coord {
                     DownloadError::Tls
                     | DownloadError::LinkExpired
                     | DownloadError::ResumeNotSupported
-                    | DownloadError::InvalidResponse => *round = MAX_ROUNDS,
+                    | DownloadError::InvalidResponse
+                    | DownloadError::Http(_) => *round = MAX_ROUNDS,
                     _ => {}
                 }
                 self.fill_slots();
@@ -532,7 +533,7 @@ impl Coord {
     async fn abort(&mut self, e: DownloadError) -> Outcome {
         self.settle().await;
         // Several segments refused after a good start: the session behind the link ended.
-        let e = if e == DownloadError::InvalidResponse
+        let e = if matches!(e, DownloadError::InvalidResponse | DownloadError::Http(_))
             && self.sh.total_bytes.load(Ordering::Relaxed) > 0
             && self.segs.len() > 2
         {

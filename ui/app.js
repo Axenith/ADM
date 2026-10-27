@@ -278,6 +278,8 @@ $("open-settings").addEventListener("click", async () => {
   $("s-sort").checked = s.sort_by_category;
   $("s-remember").checked = s.remember_folder;
   $("s-blocked").value = s.blocked_sites.join("\n");
+  $("s-types").value = s.capture_extensions.map((e) => e.toLowerCase()).join(" ");
+  $("s-over").value = s.capture_over_mb;
   dlg.showModal();
 });
 dlg.addEventListener("close", async () => {
@@ -291,6 +293,8 @@ dlg.addEventListener("close", async () => {
       ask_before_download: $("s-ask").checked,
       sort_by_category: $("s-sort").checked,
       remember_folder: $("s-remember").checked,
+      capture_extensions: $("s-types").value.split(/[\s,;.]+/).filter(Boolean), // the app tidies the list
+      capture_over_mb: Math.max(0, parseInt($("s-over").value, 10) || 0),
       last_folder: settingsNow?.last_folder ?? null, // kept as it is: only the app updates it
       blocked_sites: $("s-blocked").value.split(/\s+/).map((h) => h.trim().toLowerCase()).filter(Boolean),
     },

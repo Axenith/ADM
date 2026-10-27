@@ -128,7 +128,7 @@ async fn drive(sh: &Arc<Shared>, seg: &Arc<Segment>, first: Option<Response>) ->
                     continue;
                 }
                 Err(ConnectErr::Fatal(e)) => return End::Failed(e),
-                Err(ConnectErr::Status(_)) => return End::Failed(DownloadError::InvalidResponse),
+                Err(ConnectErr::Status(code)) => return End::Failed(DownloadError::Http(code)),
             },
         };
 

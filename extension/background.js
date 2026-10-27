@@ -1,5 +1,6 @@
-import { admState, handOver, isAlive, settings, siteBlocked, wantsCapture, baseName } from "./adm.js";
+import { admState, capturedByRules, handOver, isAlive, settings, siteBlocked, toReplay, wantsCapture, baseName } from "./adm.js";
 import { addEntry, classify, mediaKey } from "./media.js";
+import { openGrab } from "./grab-open.js";
 
 // Browser downloads: decide once the browser knows the file name, hand the link to ADM, and cancel the
 // browser's own copy. If ADM is not running, or refuses it, the browser downloads as usual: a download is
@@ -10,9 +11,20 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
     try {
       const s = await settings();
       const adm = wantsCapture(item, s) ? await admState() : null;
-      // ADM keeps the list of sites the user chose not to capture ("Don't capture from this site").
-      if (adm && !siteBlocked(adm.blockedHosts, item.referrer, item.url)) {
-        taken = await handOver({ url: item.url, referrer: item.referrer, filename: item.filename, fileSize: item.fileSize, mime: item.mime });
+      // ADM keeps the capture rules and the list of sites the user chose not to capture.
+      if (adm && capturedByRules(item, adm) && !siteBlocked(adm.blockedHosts, item.referrer, item.url)) {
+        let replay;
+        let leave = false;
+        if (watching) {
+          // With the permission, what the browser really asked for is known. Only a plain GET can be fetched again:
+          // a file made by a form (POST) or one the browser did not fetch itself stays with the browser.
+          const seen = findObserved(item);
+          if (!seen || seen.method !== "GET") leave = true;
+          else replay = toReplay(seen.headers);
+        }
+        if (!leave) {
+          taken = await handOver({ url: item.url, referrer: item.referrer, filename: item.filename, fileSize: item.fileSize, mime: item.mime, replay });
+        }
       }
     } catch (e) {
       console.warn("ADM: could not hand over the download", e);
@@ -68,6 +80,8 @@ function flash(text, color) {
 chrome.alarms.create("adm-status", { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === "adm-status") refreshStatus(); });
 chrome.runtime.onStartup.addListener(refreshStatus);
+// Alt+Shift+G (changeable at chrome://extensions/shortcuts): grab the links of the page in front.
+chrome.commands.onCommand.addListener((name, tab) => { if (name === "grab-links" && tab?.id != null) openGrab(tab.id).catch(() => {}); });
 refreshStatus();
 
 // ---- Browser monitoring: find the videos and audio a page loads --------------------------------------------
@@ -97,13 +111,39 @@ async function onHeaders(details) {
   await ready;
   if (!monitoringOn) return;
   const entry = classify(details);
-  if (entry) record(details.tabId, entry);
+  if (!entry) return;
+  const seen = observed.get(details.requestId);
+  record(details.tabId, seen ? { ...entry, replay: toReplay(seen.headers) } : entry);
+}
+
+// What the browser actually sent, kept briefly: a download's request is looked up here when it turns into a download.
+const observed = new Map(); // requestId -> { url, originUrl, method, headers, tabId, ts }
+const OBSERVED_TTL_MS = 60_000, OBSERVED_MAX = 200;
+
+function onSendHeaders(d) {
+  const prev = observed.get(d.requestId);
+  // A redirect re-fires this under the same id: remember where the chain started (a download's own `url`).
+  observed.delete(d.requestId);
+  observed.set(d.requestId, { url: d.url, originUrl: prev?.originUrl ?? d.url, method: d.method, headers: d.requestHeaders || [], tabId: d.tabId, ts: Date.now() });
+  for (const [id, rec] of observed) {
+    if (observed.size <= OBSERVED_MAX && Date.now() - rec.ts <= OBSERVED_TTL_MS) break;
+    observed.delete(id); // oldest first
+  }
+}
+
+function findObserved(item) {
+  for (const rec of [...observed.values()].reverse()) {
+    if (rec.originUrl === item.url || rec.url === item.url || (item.finalUrl && rec.url === item.finalUrl)) return rec;
+  }
+  return null;
 }
 
 let watching = false;
 function startWatching() {
   if (watching || !chrome.webRequest?.onHeadersReceived) return;
   chrome.webRequest.onHeadersReceived.addListener(onHeaders, { urls: ["<all_urls>"] }, ["responseHeaders"]);
+  // Only the kinds of request that can become a download or a video, not every image and script on a page.
+  chrome.webRequest.onSendHeaders.addListener(onSendHeaders, { urls: ["<all_urls>"], types: ["main_frame", "sub_frame", "xmlhttprequest", "media", "other", "object"] }, ["requestHeaders", "extraHeaders"]);
   watching = true;
 }
 startWatching(); // when the permission is already there

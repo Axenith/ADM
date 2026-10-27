@@ -10,11 +10,16 @@
 <body>
 <main class="wide">
   <header><img src="icons/128.png" width="48" height="48" alt=""><div><h1>Grab links</h1><p id="source">…</p></div></header>
+  <div class="scopes" id="scopes" role="tablist"></div>
   <div class="bar">
-    <div id="chips" class="chips" role="tablist"></div>
-    <input id="q" type="search" placeholder="Filter by name or address" spellcheck="false">
+    <div id="chips" class="chips"></div>
+    <input id="q" type="search" placeholder="Filter: words, *.jpg, /regex/" spellcheck="false" title="Words must all appear. Use * and ? for a pattern like *.jpg, or /regex/ for a regular expression.">
   </div>
-  <div class="tools"><button id="all" type="button">Select all shown</button><button id="none" type="button">Select none</button><span id="shown" class="muted"></span></div>
+  <div class="tools">
+    <button id="all" type="button">Select all shown</button><button id="none" type="button">Select none</button><button id="invert" type="button">Invert</button>
+    <label class="opt"><input id="noise" type="checkbox"> Hide ads and trackers</label>
+    <span id="shown" class="muted"></span>
+  </div>
   <ul id="links"></ul>
   <p id="empty" class="muted center" hidden>Nothing here.</p>
   <footer class="sticky"><span id="picked">0 selected</span><span id="result" class="muted"></span><button id="send" class="primary" type="button" disabled>Download selected</button></footer>

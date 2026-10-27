@@ -4,7 +4,7 @@ main.wide { max-width: 860px; padding-bottom: 90px; }
 .chips button { font: inherit; font-size: 13px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 99px; background: var(--card); color: var(--text); cursor: pointer; }
 .chips button b { margin-left: 6px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
 .chips button.on { background: var(--accent); border-color: var(--accent); color: #fff; } .chips button.on b { color: #fff; opacity: .85; }
-input[type=search] { font: inherit; padding: 7px 12px; width: 240px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); }
+input[type=search] { font: inherit; padding: 7px 12px; width: 280px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); }
 input[type=search]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .tools { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .tools button { font: inherit; font-size: 13px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--text); cursor: pointer; }
@@ -20,3 +20,8 @@ li .tag { padding: 1px 8px; border-radius: 6px; background: color-mix(in srgb, v
 footer.sticky { position: fixed; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 14px; justify-content: space-between; padding: 12px max(20px, calc(50% - 410px)); background: var(--card); border-top: 1px solid var(--line); }
 footer.sticky #picked { font-weight: 650; } footer.sticky .muted { margin-right: auto; }
 button.primary:disabled { opacity: .45; cursor: default; filter: none; }
+.scopes { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.scopes button { font: inherit; font-size: 14px; font-weight: 600; padding: 8px 14px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+.scopes button.on { color: var(--accent); border-bottom-color: var(--accent); } .scopes b { margin-left: 6px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tools .opt { margin-left: auto; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.tools .opt input { accent-color: var(--accent); }

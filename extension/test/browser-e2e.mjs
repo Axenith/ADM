@@ -211,6 +211,19 @@ try {
     check("E: it counts the page's links by type (2 files, 3 links, the repeat counted once)", /Files2/.test(chips) && /All links3/.test(chips), chips);
     const shownNames = await evaluate(gs, 'JSON.stringify([...document.querySelectorAll("#links li .name")].map((n) => n.textContent))');
     check("E: by default it shows the files, not the plain pages", JSON.parse(shownNames).sort().join() === "a.zip,spec.pdf", shownNames);
+    const scopeTabs = await evaluate(gs, 'JSON.stringify([...document.querySelectorAll("#scopes button")].map((b) => b.textContent))');
+    check("E: there are two tabs, the page's links and what the page itself loads", /Links on the page3/.test(scopeTabs) && /Page resources\d+/.test(scopeTabs), scopeTabs);
+    await evaluate(gs, 'document.querySelectorAll("#scopes button")[1].click()');
+    const names = async () => JSON.parse(await evaluate(gs, 'JSON.stringify([...document.querySelectorAll("#links li .name")].map((n) => n.textContent))'));
+    const res = await names();
+    check("E: page resources list what the page fetched (the videos and the audio)", ["clip.mp4", "song.mp3"].every((n) => res.includes(n)), JSON.stringify(res));
+    const filterBy = async (q) => { await evaluate(gs, `(() => { const i = document.getElementById("q"); i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event("input")); })()`); return names(); };
+    check("E: a wildcard filter (*.mp3) narrows them", (await filterBy("*.mp3")).join() === "song.mp3");
+    check("E: a regular expression (/clip|song/) works", (await filterBy("/clip|song/")).sort().join() === "clip.mp4,song.mp3");
+    check("E: a broken expression shows nothing instead of failing", (await filterBy("/(/")).length === 0);
+    await filterBy("");
+    await evaluate(gs, 'document.querySelectorAll("#scopes button")[0].click()');
+    check("E: back on the links tab", (await names()).sort().join() === "a.zip,spec.pdf");
     if (process.env.SHOTS_DIR) {
       await evaluate(gs, 'document.getElementById("all").click()');
       await send("Emulation.setDeviceMetricsOverride", { width: 900, height: 520, deviceScaleFactor: 1.5, mobile: false }, gs);

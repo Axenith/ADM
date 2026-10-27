@@ -31,7 +31,7 @@
 
   <section>
     <h2>Browser monitoring</h2>
-    <p>Finds the videos and audio a page loads, so you can download them from the toolbar popup. It only reads each response's type and size, and keeps the list in memory for the tab.</p>
+    <p>Finds the videos and audio a page loads, so you can download them from the toolbar popup. It reads each response's type and size, and the headers of requests that can become downloads, so ADM can repeat a download exactly as your browser made it (and leave alone downloads that cannot be repeated, such as a file made by a form). Nothing leaves your computer; the list is kept in memory for the tab.</p>
     <div class="line"><b id="mon-state">…</b><button id="mon-btn" type="button" class="primary">…</button></div>
     <p class="result" id="mon-result" role="status"></p>
   </section>

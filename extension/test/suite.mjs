@@ -1,14 +1,21 @@
-// Run with:  node --test extension/test/
-// A mocked browser (chrome.*) plus a mock ADM server; checks the behaviour that matters most: a download is
-// handed to ADM with the right data, and is never lost when ADM is missing or refuses it.
+// The extension against a mocked browser (chrome.*) and a mock ADM server. Imported by basic.test.mjs and
+// enhanced.test.mjs, which run it in the two modes the extension has:
+//   basic     the optional `webRequest` permission is NOT granted: the extension sees only what the downloads API says
+//   enhanced  it IS granted: the extension also sees the requests the browser makes (video list, exact replay)
+// Tests that only make sense in one mode say so; the rest run in both.
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+
+const ENHANCED = process.env.ADM_TEST_MODE === "enhanced";
+const basicOnly = ENHANCED ? test.skip : test;
+const enhancedOnly = ENHANCED ? test : test.skip;
 
 // ---- mock ADM ---------------------------------------------------------------------------------------
 const seen = [];
 let mode = "adm"; // adm | other | refuse
 let blocked = []; // the sites ADM says not to capture
+let rules = {}; // ADM's capture rules ({ fileExts, captureOverMB }); none = an ADM that takes everything
 const server = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -16,7 +23,7 @@ const server = http.createServer((req, res) => {
     seen.push({ method: req.method, path: req.url, headers: req.headers, body });
     if (req.url === "/sync") {
       res.setHeader("Content-Type", "application/json");
-      return res.end(JSON.stringify(mode === "other" ? { instanceId: "xdm-like", enabled: true } : { app: "adm", enabled: true, blockedHosts: blocked }));
+      return res.end(JSON.stringify(mode === "other" ? { instanceId: "xdm-like", enabled: true } : { app: "adm", enabled: true, blockedHosts: blocked, ...rules }));
     }
     if (req.url === "/download") {
       res.statusCode = mode === "refuse" ? 500 : 200;
@@ -45,7 +52,10 @@ globalThis.chrome = {
     session: { get: async (k) => (k in session ? { [k]: session[k] } : {}), set: async (o) => void Object.assign(session, o), remove: async (k) => void delete session[k] },
     onChanged: { addListener: (fn) => (listeners.storageChanged = fn) },
   },
-  webRequest: { onHeadersReceived: { addListener: (fn, filter, extra) => { listeners.headers = fn; listeners.headersArgs = [filter, extra]; } } },
+  ...(ENHANCED ? { webRequest: {
+    onHeadersReceived: { addListener: (fn, filter, extra) => { listeners.headers = fn; listeners.headersArgs = [filter, extra]; } },
+    onSendHeaders: { addListener: (fn, filter, extra) => { listeners.sendHeaders = fn; listeners.sendHeadersArgs = [filter, extra]; } },
+  } } : {}),
   cookies: { getAll: async ({ url }) => cookiesByUrl[url] ?? [] },
   downloads: {
     onDeterminingFilename: { addListener: (fn) => (listeners.filename = fn) },
@@ -58,16 +68,28 @@ globalThis.chrome = {
   contextMenus: { create: (o) => calls.push(["menu", o.id]), onClicked: { addListener: (fn) => (listeners.menu = fn) } },
   action: { setBadgeText: (o) => { if (o.tabId !== undefined) tabBadge[o.tabId] = o.text; else badge = o.text; }, setBadgeBackgroundColor() {}, setTitle: (o) => (title = o.title), setIcon: (o) => (icon = o.path[16]) },
   alarms: { create() {}, onAlarm: { addListener: (fn) => (listeners.alarm = fn) } },
+  commands: { onCommand: { addListener: (fn) => (listeners.command = fn) } },
 };
 
 const adm = await import("../adm.js");
 adm.setAdmUrl(URL_);
 await import("../background.js");
 
-const reset = () => { for (const k of Object.keys(session)) delete session[k]; for (const k of Object.keys(tabBadge)) delete tabBadge[k]; blocked = []; seen.length = 0; calls.length = 0; perm.granted = true; perm.asked.length = 0; badge = ""; mode = "adm"; for (const k of Object.keys(store)) delete store[k]; };
+const reset = () => { rules = {}; for (const k of Object.keys(session)) delete session[k]; for (const k of Object.keys(tabBadge)) delete tabBadge[k]; blocked = []; seen.length = 0; calls.length = 0; perm.granted = true; perm.asked.length = 0; badge = ""; mode = "adm"; for (const k of Object.keys(store)) delete store[k]; };
 const item = (extra = {}) => ({ id: 7, url: "https://files.example/a.zip", referrer: "https://files.example/page", filename: "/home/me/Downloads/a.zip", fileSize: 5_000_000, mime: "application/zip", ...extra });
-/** Fires the browser's "choose a file name" event and waits until the extension has answered it. */
+let requestCounter = 0;
+/**
+ * Fires the browser's "choose a file name" event and waits until the extension has answered it. In enhanced mode the
+ * request behind the download is announced first, as a browser does (`it.request`: false = never seen, or overrides).
+ */
 function download(it) {
+  if (ENHANCED && it.request !== false) {
+    listeners.sendHeaders({
+      requestId: "r" + ++requestCounter, url: it.url, method: "GET", tabId: 1,
+      requestHeaders: [{ name: "Cookie", value: "session=abc; pref=1" }, { name: "Referer", value: it.referrer }, { name: "User-Agent", value: "UA/1" }],
+      ...(it.request || {}),
+    });
+  }
   return new Promise((resolve) => {
     const ret = listeners.filename(it, () => resolve(true));
     assert.equal(ret, true, "the listener must return true because it answers asynchronously");
@@ -147,7 +169,7 @@ test("context menu: Download with ADM", async () => {
   assert.equal(badge, "!", "the user is told ADM isn't running");
 });
 
-test("cookies are sent only when the user has allowed them", async () => {
+basicOnly("cookies are sent only when the user has allowed them", async () => {
   reset();
   perm.granted = false;
   await download(item());
@@ -223,12 +245,12 @@ const video = (url, tabId = 5, over = {}) => ({ url, tabId, statusCode: 200, res
 const settle = () => new Promise((r) => setTimeout(r, 40));
 const listFor = (tabId) => session[`media:${tabId}`] || [];
 
-test("monitoring only watches response headers and never changes a request", () => {
+enhancedOnly("monitoring only watches response headers and never changes a request", () => {
   assert.equal(typeof listeners.headers, "function", "it listens for responses as soon as the permission exists");
   assert.deepEqual(listeners.headersArgs, [{ urls: ["<all_urls>"] }, ["responseHeaders"]], "no `blocking`, nothing but headers");
 });
 
-test("a video a page loads is listed for that tab and counted on the icon", async () => {
+enhancedOnly("a video a page loads is listed for that tab and counted on the icon", async () => {
   reset();
   await listeners.headers(video("https://c.example/a.mp4")); await settle();
   assert.deepEqual(listFor(5).map((e) => e.url), ["https://c.example/a.mp4"]);
@@ -239,7 +261,7 @@ test("a video a page loads is listed for that tab and counted on the icon", asyn
   assert.deepEqual(listFor(6), [], "another tab is unaffected");
 });
 
-test("monitoring ignores what it should", async () => {
+enhancedOnly("monitoring ignores what it should", async () => {
   reset();
   await listeners.headers(video("https://c.example/a.mp4", -1)); // not from a tab
   await listeners.headers({ url: "https://c.example/p.html", tabId: 5, statusCode: 200, responseHeaders: [{ name: "content-type", value: "text/html" }] });
@@ -248,7 +270,7 @@ test("monitoring ignores what it should", async () => {
   assert.deepEqual(session, {}, "nothing was stored");
 });
 
-test("switching monitoring off stops listing, and on starts again", async () => {
+enhancedOnly("switching monitoring off stops listing, and on starts again", async () => {
   reset();
   store.monitoring = false; listeners.storageChanged({ monitoring: { newValue: false } }, "local");
   await listeners.headers(video("https://c.example/a.mp4")); await settle();
@@ -258,7 +280,7 @@ test("switching monitoring off stops listing, and on starts again", async () => 
   assert.equal(listFor(5).length, 1);
 });
 
-test("a new page in a tab starts a fresh list; a closed tab's list goes away", async () => {
+enhancedOnly("a new page in a tab starts a fresh list; a closed tab's list goes away", async () => {
   reset();
   await listeners.headers(video("https://c.example/a.mp4")); await settle();
   listeners.tabUpdated(5, { status: "complete" }); await settle();
@@ -273,11 +295,99 @@ test("a new page in a tab starts a fresh list; a closed tab's list goes away", a
   assert.deepEqual(listFor(8), []);
 });
 
-test("monitoring starts the moment the permission is granted", () => {
+enhancedOnly("monitoring starts the moment the permission is granted", () => {
   // `startWatching` is safe to call again: the listener is added once.
   const before = listeners.headers;
   listeners.permAdded();
   assert.equal(listeners.headers, before);
+});
+
+// ---- Capture rules (ADM decides which downloads it takes over) --------------------------------------------------
+test("only the file types ADM lists, or big files, are taken over", async () => {
+  reset();
+  rules = { fileExts: ["ZIP", "ISO"], captureOverMB: 20 };
+  await download(item({ url: "https://files.example/a.zip", filename: "/d/a.zip" }));
+  assert.ok(seen.some((r) => r.path === "/download"), "a listed type");
+  reset(); rules = { fileExts: ["ZIP"], captureOverMB: 20 };
+  await download(item({ id: 8, url: "https://files.example/notes.txt", filename: "/d/notes.txt", fileSize: 4_000 }));
+  assert.equal(seen.some((r) => r.path === "/download"), false, "an unlisted small file stays in the browser");
+  assert.deepEqual(calls, [], "and is not cancelled");
+  reset(); rules = { fileExts: ["ZIP"], captureOverMB: 20 };
+  await download(item({ id: 9, url: "https://files.example/video.weird", filename: "/d/video.weird", fileSize: 30 * 1048576 }));
+  assert.ok(seen.some((r) => r.path === "/download"), "an unlisted type is taken over when it is big enough");
+  reset(); rules = { fileExts: ["ZIP"], captureOverMB: 0 };
+  await download(item({ id: 10, url: "https://files.example/video.weird", filename: "/d/video.weird", fileSize: 30 * 1048576 }));
+  assert.equal(seen.some((r) => r.path === "/download"), false, "0 turns the size rule off");
+  reset(); rules = { fileExts: ["ZIP"], captureOverMB: 20 };
+  await download(item({ id: 11, url: "https://files.example/x", filename: "", fileSize: -1 }));
+  assert.equal(seen.some((r) => r.path === "/download"), false, "unknown type and unknown size: left alone");
+});
+
+test("an ADM that publishes no rules takes everything, as before", async () => {
+  reset();
+  await download(item({ url: "https://files.example/odd.thing", filename: "/d/odd.thing", fileSize: 10 }));
+  assert.ok(seen.some((r) => r.path === "/download"));
+});
+
+// ---- Exact replay of what the browser sent (enhanced mode) ------------------------------------------------------
+enhancedOnly("the download is fetched again with exactly what the browser sent", async () => {
+  reset();
+  await download(item({ request: { requestHeaders: [
+    { name: "Cookie", value: "sid=exact; HttpOnly=1" }, { name: "Authorization", value: "Bearer tok" }, { name: "X-Custom", value: "kept" },
+    { name: "Referer", value: "https://files.example/page" }, { name: "User-Agent", value: "UA/9" }, { name: "Accept-Language", value: "bn,en" },
+    { name: "Sec-Fetch-Dest", value: "document" }, { name: "Upgrade-Insecure-Requests", value: "1" }, { name: "Range", value: "bytes=0-" },
+    { name: "If-None-Match", value: "x" }, { name: "Accept-Encoding", value: "gzip" }, { name: "Origin", value: "https://files.example" },
+  ] } }));
+  const b = JSON.parse(seen.find((r) => r.path === "/download").body);
+  assert.equal(b.cookie, "sid=exact; HttpOnly=1", "the cookies the browser really sent, not a lookup");
+  const names = Object.keys(b.requestHeaders).sort();
+  assert.deepEqual(names, ["Accept-Language", "Authorization", "Referer", "User-Agent", "X-Custom"], "what a download manager needs, nothing browser-private");
+  assert.deepEqual(b.requestHeaders.Authorization, ["Bearer tok"]);
+});
+
+enhancedOnly("when the browser showed no cookie for the download, the cookie jar fills the gap", async () => {
+  reset();
+  // What a real browser reports for a download started by a click: almost nothing.
+  await download(item({ request: { requestHeaders: [{ name: "Sec-GPC", value: "1" }, { name: "Accept-Language", value: "en" }] } }));
+  const b = JSON.parse(seen.find((r) => r.path === "/download").body);
+  assert.equal(b.cookie, "session=abc; pref=1");
+  assert.deepEqual(b.requestHeaders, { "Accept-Language": ["en"] });
+});
+
+enhancedOnly("a download that was not a plain GET stays with the browser", async () => {
+  reset();
+  await download(item({ request: { method: "POST" } }));
+  assert.equal(seen.some((r) => r.path === "/download"), false, "a file made by a form cannot be fetched again by address");
+  assert.deepEqual(calls, [], "so the browser keeps it");
+});
+
+enhancedOnly("a download the browser was not seen fetching stays with the browser", async () => {
+  reset();
+  await download(item({ request: false }));
+  assert.equal(seen.some((r) => r.path === "/download"), false);
+  assert.deepEqual(calls, []);
+});
+
+enhancedOnly("a download that was redirected is matched to its first address", async () => {
+  reset();
+  listeners.sendHeaders({ requestId: "redir", url: "https://files.example/a.zip", method: "GET", tabId: 1, requestHeaders: [{ name: "Cookie", value: "hop=1" }] });
+  listeners.sendHeaders({ requestId: "redir", url: "https://cdn.example/final/a.zip", method: "GET", tabId: 1, requestHeaders: [{ name: "Cookie", value: "hop=2" }] });
+  await download(item({ url: "https://files.example/a.zip", finalUrl: "https://cdn.example/final/a.zip", request: false }));
+  assert.equal(JSON.parse(seen.find((r) => r.path === "/download").body).cookie, "hop=2", "the last hop's request is what is replayed");
+});
+
+enhancedOnly("videos found on a page keep what the browser sent for them", async () => {
+  reset();
+  listeners.sendHeaders({ requestId: "v1", url: "https://c.example/clip.mp4", method: "GET", tabId: 5, requestHeaders: [{ name: "Cookie", value: "cdn=1" }, { name: "Referer", value: "https://c.example/watch" }, { name: "Sec-Fetch-Mode", value: "no-cors" }] });
+  await listeners.headers(video("https://c.example/clip.mp4", 5, { requestId: "v1" })); await settle();
+  const entry = listFor(5)[0];
+  assert.deepEqual(entry.replay, { headers: { Referer: ["https://c.example/watch"] }, cookie: "cdn=1" });
+});
+
+enhancedOnly("the request memory stays small", () => {
+  for (let i = 0; i < 500; i++) listeners.sendHeaders({ requestId: "m" + i, url: "https://x.example/" + i, method: "GET", tabId: 1, requestHeaders: [] });
+  assert.equal(listeners.sendHeadersArgs[1].includes("extraHeaders"), true, "Cookie and Authorization are only visible with extraHeaders");
+  assert.ok(listeners.sendHeadersArgs[0].types.every((t) => !["image", "script", "stylesheet", "font"].includes(t)), "images and scripts are not even watched");
 });
 
 test.after(() => server.close());

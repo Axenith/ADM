@@ -44,6 +44,26 @@ impl Record {
     }
 }
 
+/// File types the browser extension hands to ADM by default (the list is editable in Settings).
+pub const DEFAULT_CAPTURE_EXTENSIONS: &[&str] = &[
+    "3GP", "7Z", "AVI", "BZ2", "DEB", "DOC", "DOCX", "EXE", "ISO", "DMG", "MSI", "PDF", "PPT", "PPTX", "RAR", "RPM",
+    "XLS", "XLSX", "TAR", "JAR", "ZIP", "XZ", "PKG", "GZ", "TGZ", "ZST", "CAB", "APK", "XAPK", "APPIMAGE", "MSIX",
+    "BIN", "IMG", "EPUB", "ODT", "ODS", "ODP", "MP4", "MKV", "WEBM", "MOV", "M4V", "WMV", "FLV", "MPG", "MPEG", "MP3",
+    "M4A", "AAC", "FLAC", "WAV", "OGG", "OPUS",
+];
+
+/// `[" .Zip", "mp4", "mp4", "a b", ""]` -> `["ZIP", "MP4"]`: how the list typed in Settings is stored.
+pub fn normalize_extensions<I: IntoIterator<Item = String>>(raw: I) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for e in raw {
+        let e = e.trim().trim_start_matches('.').to_ascii_uppercase();
+        if (1..=10).contains(&e.len()) && e.chars().all(|c| c.is_ascii_alphanumeric()) && !out.contains(&e) {
+            out.push(e);
+        }
+    }
+    out
+}
+
 /// One of several links sent together ("Grab all links"): they share one dialog.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BatchItem {
@@ -88,6 +108,10 @@ pub struct Settings {
     pub last_folder: Option<PathBuf>,
     /// How many downloads run at once; the rest wait their turn. 0 means no limit.
     pub max_simultaneous: usize,
+    /// File types (upper case, no dot) the browser extension takes over; other downloads stay in the browser...
+    pub capture_extensions: Vec<String>,
+    /// ...unless the file is at least this big (in MB), whatever its type. 0 turns that off.
+    pub capture_over_mb: u64,
 }
 
 impl Settings {
@@ -121,6 +145,8 @@ impl Default for Settings {
             remember_folder: true,
             last_folder: None,
             max_simultaneous: 3,
+            capture_extensions: DEFAULT_CAPTURE_EXTENSIONS.iter().map(|e| e.to_string()).collect(),
+            capture_over_mb: 20,
         }
     }
 }

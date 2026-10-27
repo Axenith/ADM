@@ -9,7 +9,7 @@ use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use store::{BatchItem, CATEGORIES, Db, Pending, Record, Settings, Status, category_of};
+use store::{BatchItem, CATEGORIES, Db, Pending, Record, Settings, Status, category_of, normalize_extensions};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// What the UI shows for one download. Ids are strings because a u64 does not fit a JS number.
@@ -268,6 +268,7 @@ fn set_settings(app: AppHandle, st: State<Shared>, mut settings: Settings) {
         settings.last_folder = None;
     }
     st.engine.speed_limiter().set_limit(settings.speed_limit_kib * 1024);
+    settings.capture_extensions = normalize_extensions(std::mem::take(&mut settings.capture_extensions));
     g.db.settings = settings;
     g.db.save(&st.db_path);
     drop(g);
@@ -968,8 +969,16 @@ mod tests {
         assert!(db.settings.ask_before_download, "the dialog is on unless turned off");
         assert!(db.settings.remember_folder && db.settings.last_folder.is_none(), "remembering is on, nothing remembered yet");
         assert_eq!(db.settings.max_simultaneous, 3);
+        assert!(db.settings.capture_extensions.contains(&"ZIP".to_string()) && db.settings.capture_over_mb == 20, "capture rules default for an old list");
         assert!(!db.settings.sort_by_category && db.settings.blocked_sites.is_empty() && db.pending.is_empty());
         assert_eq!(db.records[0].segments, None);
+    }
+
+    #[test]
+    fn the_capture_list_typed_in_settings_is_cleaned_up() {
+        let typed = [" .Zip", "mp4", "MP4", "a b", "", "tar.gz", "iso"].map(String::from);
+        assert_eq!(crate::store::normalize_extensions(typed), ["ZIP", "MP4", "ISO"]);
+        assert!(crate::store::normalize_extensions(["x".repeat(11)]).is_empty(), "too long to be an extension");
     }
 
     #[test]

@@ -315,7 +315,7 @@ async fn http_error_fails_fast() {
     let d = dirs();
     let (addr, _o) = spawn_server(Opts { status: 404, ..Default::default() }).await;
     let (h, _rx) = engine(d.state.path()).start(DownloadRequest::new(1, format!("http://{addr}/missing"), d.out.path()));
-    assert!(matches!(h.wait().await, Outcome::Failed(DownloadError::InvalidResponse)));
+    assert!(matches!(h.wait().await, Outcome::Failed(DownloadError::Http(404))));
 }
 
 #[tokio::test]
@@ -396,7 +396,7 @@ async fn probe_of_a_server_without_ranges_and_of_errors() {
 
     let (addr, _o) = spawn_server(Opts { status: 404, ..Default::default() }).await;
     let err = engine(d.state.path()).probe(&DownloadRequest::new(1, format!("http://{addr}/missing"), d.out.path())).await;
-    assert!(matches!(err, Err(DownloadError::InvalidResponse)));
+    assert!(matches!(err, Err(DownloadError::Http(404))));
 
     // Nothing listening at all.
     let err = engine(d.state.path()).probe(&DownloadRequest::new(1, "http://127.0.0.1:1/x", d.out.path())).await;
@@ -410,4 +410,17 @@ async fn probe_honours_a_name_chosen_by_the_caller() {
     let mut req = DownloadRequest::new(1, format!("http://{addr}/whatever.bin"), d.out.path());
     req.file_name = Some("sub/chosen name.mkv".into());
     assert_eq!(engine(d.state.path()).probe(&req).await.unwrap().file_name, "chosen name.mkv");
+}
+
+#[tokio::test]
+async fn a_refusal_names_the_status_the_server_gave() {
+    let d = dirs();
+    for code in [403u16, 410, 401] {
+        let (addr, _o) = spawn_server(Opts { status: code, ..Default::default() }).await;
+        let (h, _rx) = engine(d.state.path()).start(DownloadRequest::new(u64::from(code), format!("http://{addr}/f.bin"), d.out.path()));
+        match h.wait().await {
+            Outcome::Failed(e) => assert_eq!(e, DownloadError::Http(code), "status {code}"),
+            other => panic!("status {code}: {other:?}"),
+        }
+    }
 }

@@ -48,13 +48,6 @@ const BLOCKED_HEADERS: [&str; 11] = [
 ];
 const BLOCKED_PREFIXES: [&str; 3] = ["if-", "proxy-", "accept-encoding"];
 
-/// Files the extension should hand over (same list XDM ships).
-const FILE_EXTENSIONS: &[&str] = &[
-    "3GP", "7Z", "AVI", "BZ2", "DEB", "DOC", "DOCX", "EXE", "ISO", "DMG", "MSI", "PDF", "PPT", "PPTX", "RAR", "RPM",
-    "XLS", "XLSX", "TAR", "JAR", "ZIP", "XZ", "PKG", "GZ", "TGZ", "ZST", "CAB", "APK", "XAPK", "APPIMAGE", "MSIX",
-    "BIN", "IMG", "EPUB", "ODT", "ODS", "ODP", "MP4", "MKV", "WEBM", "MOV", "M4V", "WMV", "FLV", "MPG", "MPEG", "MP3",
-    "M4A", "AAC", "FLAC", "WAV", "OGG", "OPUS",
-];
 const BLOCKED_HOSTS: &[&str] = &["update.microsoft.com", "windowsupdate.com", "thwawte.com"];
 
 pub enum Acquired {
@@ -314,13 +307,14 @@ fn page_file_name(f: &str) -> String {
     adm_core::sanitize_file_name(f)
 }
 
-fn sync_body(instance: &str, blocked: &[String]) -> String {
+fn sync_body(instance: &str, blocked: &[String], file_exts: &[String], capture_over_mb: u64) -> String {
     // The media lists stay empty until video capture exists: with them set, the extension would send a
     // message for every media request it sees and nothing would use it.
     json!({
         "app": "adm",
         "enabled": true,
-        "fileExts": FILE_EXTENSIONS,
+        "fileExts": file_exts,
+        "captureOverMB": capture_over_mb,
         "blockedHosts": BLOCKED_HOSTS.iter().map(|h| h.to_string()).chain(blocked.iter().cloned()).collect::<Vec<_>>(),
         "requestFileExts": [],
         "mediaTypes": [],
@@ -371,8 +365,11 @@ async fn handle(mut s: TcpStream, app: AppHandle, st: Shared, instance: &str) {
         "/media" | "/vid" | "/clear" | "/clear-tab" | "/tab-update" => {}
         _ => return respond(&mut s, 404, "Not Found", "").await,
     }
-    let blocked = st.inner.lock().unwrap().db.settings.blocked_sites.clone();
-    respond(&mut s, 200, "OK", &sync_body(instance, &blocked)).await;
+    let (blocked, exts, over) = {
+        let g = st.inner.lock().unwrap();
+        (g.db.settings.blocked_sites.clone(), g.db.settings.capture_extensions.clone(), g.db.settings.capture_over_mb)
+    };
+    respond(&mut s, 200, "OK", &sync_body(instance, &blocked, &exts, over)).await;
 }
 
 #[cfg(test)]
@@ -437,6 +434,16 @@ mod tests {
         assert!(none.into_parts().is_none());
         let many = format!(r#"{{"items":[{}]}}"#, (0..500).map(|i| format!(r#"{{"url":"https://x.io/{i}"}}"#)).collect::<Vec<_>>().join(","));
         assert_eq!(serde_json::from_str::<BatchMessage>(&many).unwrap().into_parts().unwrap().0.len(), 200, "capped");
+    }
+
+    #[test]
+    fn sync_publishes_the_users_capture_rules_and_blocked_sites() {
+        let body: Value = serde_json::from_str(&sync_body("i1", &["mine.example".into()], &["ZIP".into(), "ISO".into()], 50)).unwrap();
+        assert_eq!(body["app"], "adm");
+        assert_eq!(body["fileExts"], json!(["ZIP", "ISO"]));
+        assert_eq!(body["captureOverMB"], 50);
+        assert_eq!(body["blockedHosts"].as_array().unwrap().last().unwrap(), "mine.example");
+        assert!(body["blockedHosts"].as_array().unwrap().iter().any(|h| h == "update.microsoft.com"), "built-in ones stay");
     }
 
     #[test]

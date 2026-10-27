@@ -92,6 +92,16 @@
     <label class="check"><input id="s-remember" type="checkbox"><span>Remember the folder I choose</span><small>New downloads start in the folder you used last time, instead of always in the download folder above.</small></label>
     <label class="check"><input id="s-sort" type="checkbox"><span>Sort into folders by file type</span><small>Video, Music, Documents, Compressed and Programs go into their own folders.</small></label>
     <label>
+      <span>Browser downloads to take over</span>
+      <textarea id="s-types" rows="3" spellcheck="false" placeholder="zip iso mp4 pdf …"></textarea>
+      <small>File types the browser extension hands to ADM. Anything else stays in the browser.</small>
+    </label>
+    <label>
+      <span>Also take over any file larger than (MB)</span>
+      <input id="s-over" type="number" min="0">
+      <small>Whatever its type. 0 turns this off.</small>
+    </label>
+    <label>
       <span>Don't capture downloads from these sites</span>
       <textarea id="s-blocked" rows="3" spellcheck="false" placeholder="one site per line, e.g. example.com"></textarea>
       <small>The browser extension leaves these sites' downloads to the browser.</small>

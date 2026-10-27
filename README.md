@@ -21,12 +21,13 @@
     <img alt="ADM main window" src="docs/screenshots/main-light.png" width="760">
   </picture>
 </p>
+<p align="center"><sub>Sample data: the finished and paused rows are made up; the failed one is a real download whose link answered 404.</sub></p>
 
 ADM splits each download across several connections, keeps going when your connection drops, and picks up where it stopped. The app is a single native binary of about **5 MB** that uses your system's web view, instead of shipping its own runtime. A small browser extension sends your downloads to it.
 
 It is inspired by [XDM (Xtreme Download Manager)](https://github.com/subhra74/xdm), whose install size grew large because it bundles a Java runtime. ADM aims for the same behaviour at a fraction of the size.
 
-> **Status: early (0.1.0).** It is used and tested on **Linux**. Windows and macOS builds are not verified yet. See the [roadmap](#roadmap).
+> **Status: early (0.1.0; the repository is ahead of that release).** It is used and tested on **Linux**. Windows and macOS builds are not verified yet. See the [roadmap](#roadmap).
 
 ## Features
 
@@ -46,10 +47,16 @@ It is inspired by [XDM (Xtreme Download Manager)](https://github.com/subhra74/xd
 - **One copy only.** Launching ADM again brings up the running one.
 - Dark and light themes. No framework in the UI: plain HTML, CSS and JavaScript (about 40 KB).
 
+**For AI agents**
+- `adm-dl mcp` is an MCP server (Claude Code, opencode, Gemini CLI, Codex, Cursor): `adm_download`, `adm_status`, `adm_cancel`, `adm_probe`. Several connections, resume, checksum check, and long downloads that report back with a job id instead of timing out. No GUI needed. See [docs/AGENTS.md](docs/AGENTS.md).
+- `adm-dl <url> --json` for any agent with a shell: one JSON line when done, meaningful exit codes.
+
 **Browser extension** (Chrome, Brave and other Chromium browsers)
 - Browser downloads open in ADM. If ADM is not running, the browser downloads as usual: a download is never lost.
-- **Browser monitoring** (opt-in) lists the videos and audio a page loads, with a download button each.
-- **Grab all links** on a page, filtered by type, sent to ADM as one group.
+- **You choose what it takes over.** In ADM's settings, list the file types (and a size above which anything is taken); everything else stays with the browser. Sites you mark *Don't capture* are left alone.
+- **Browser monitoring** (opt-in) lists the videos and audio a page loads, with a download button each. Slices of a YouTube-style stream are not listed as videos.
+- **Exact replay** (with monitoring on): the download is repeated with the headers and cookies your browser really sent. A download that is not a plain GET (a file made by a form) stays with the browser, because it cannot be repeated from an address.
+- **Grab links** (Alt+Shift+G): the links on a page, or everything the page loads (images at their largest size, videos, posters, CSS backgrounds). Filter by type, by words, by pattern (`*.jpg`) or by `/regex/`; hide ads and trackers; invert the selection; send them to ADM as one group.
 - Right-click a link: **Download with ADM**. Private windows are never captured.
 
 <p align="center">
@@ -77,7 +84,7 @@ It is inspired by [XDM (Xtreme Download Manager)](https://github.com/subhra74/xd
 
 Nice to have: a file manager that answers the standard `FileManager1` D-Bus call (Dolphin, Nautilus, Thunar, …) for *Show in folder*, `kdialog` or `zenity` for the *Browse* button, and `gio` for *Move to trash*.
 
-The tarball also contains `adm-dl`, a small command-line downloader that uses the same engine:
+The tarball also contains `adm-dl`, a small command-line downloader that uses the same engine (and an MCP server for AI agents, see [docs/AGENTS.md](docs/AGENTS.md)):
 `adm-dl <url> -o <folder> -c 8 --limit <KiB/s>` (Ctrl-C pauses; run the same command to resume).
 
 ### Browser extension
@@ -86,7 +93,7 @@ Until it is on the Chrome Web Store, load it yourself:
 
 1. Download `adm-extension-<version>.zip` from [Releases](https://github.com/Axenith/ADM/releases/latest) and unzip it.
 2. Open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**, click **Load unpacked**, choose the unzipped folder.
-3. Start ADM. A page opens that explains the two optional features (login cookies and browser monitoring); neither is on until you allow it.
+3. Start ADM. A page opens that explains the two optional features (login cookies and browser monitoring); neither is on until you allow it. Without either, the extension still takes over downloads and grabs links.
 
 Turn off other download-manager extensions (including XDM's) while this one is on: only one can take over a browser's downloads.
 
@@ -136,10 +143,11 @@ One server (a LAN server that limits each connection to about 2 MB/s, so paralle
 ```sh
 cargo test -p adm-core                  # engine: unit + end-to-end tests against a real local HTTP server
 cargo test -p adm                       # app logic
-node --test extension/test/media.test.mjs extension/test/extension.test.mjs   # extension, mocked browser
+node --test extension/test/basic.test.mjs extension/test/enhanced.test.mjs extension/test/media.test.mjs   # extension, mocked browser (the shared suite runs with and without browser monitoring)
 node extension/test/browser-e2e.mjs     # the extension in a REAL headless Brave/Chromium
 python3 tests/ui/run.py                 # the UI, clicked in a headless browser
 python3 tests/e2e/e2e.py                # and e2e2.py, e2e3.py, e2e4.py: the real app (see tests/e2e/README.md)
+python3 tests/e2e/agent_mcp.py          # the MCP server and --json CLI, driven like an agent would
 ```
 
 The end-to-end tests run a separate copy of ADM on its own port and data folder (`ADM_PORT`, `ADM_DATA_DIR`), so they never touch a running ADM or your list. They need a Linux desktop session; a few use `busctl`, `hyprctl` and `grim`.

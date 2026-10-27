@@ -55,7 +55,7 @@ impl Engine {
         };
         let status = resp.status().as_u16();
         if !matches!(status, 200 | 206) {
-            return Err(DownloadError::InvalidResponse);
+            return Err(DownloadError::Http(status));
         }
         let header = |name| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
         let (size, resumable) = if status == 206 {
