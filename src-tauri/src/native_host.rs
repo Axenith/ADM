@@ -7,8 +7,9 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 pub const HOST_NAME: &str = "dev.adm.launcher";
-/// Extensions allowed to start ADM: the one in this repository (its key is pinned in manifest.json).
-const EXTENSION_IDS: &[&str] = &["hncgajannlpkmglkanljjngglcjhbdnm"];
+/// Extensions allowed to start ADM: the one loaded from this repository (its key is pinned in manifest.json) and the
+/// Chrome Web Store listing, which has an ID of its own.
+const EXTENSION_IDS: &[&str] = &["hncgajannlpkmglkanljjngglcjhbdnm", "lbgnfakfhkaicndhpdpfdeaceokhmnae"];
 /// Browser folders under the config directory that read `NativeMessagingHosts/`.
 #[cfg(unix)]
 const BROWSERS: &[&str] = &["google-chrome", "google-chrome-beta", "chromium", "BraveSoftware/Brave-Browser", "microsoft-edge", "vivaldi"];

@@ -6,6 +6,7 @@ from common import *
 from common import _procs
 
 ORIGIN = "chrome-extension://hncgajannlpkmglkanljjngglcjhbdnm/"
+STORE_ORIGIN = "chrome-extension://lbgnfakfhkaicndhpdpfdeaceokhmnae/"
 
 def host(origin, message, timeout=15):
     """What a browser does: starts the program with the origin, sends one length-prefixed JSON message, reads the reply."""
@@ -33,7 +34,7 @@ check("register: writes the host file for each browser that is installed", all(o
 check("register: leaves browsers that are not installed alone", not os.path.exists(f"{cfg}/chromium"))
 m = json.load(open(files[0]))
 check("register: points at this program, as stdio", m["name"] == "dev.adm.launcher" and m["path"] == APP and m["type"] == "stdio", json.dumps(m))
-check("register: only the ADM extension may start it", m["allowed_origins"] == [ORIGIN], json.dumps(m["allowed_origins"]))
+check("register: only the ADM extension (unpacked or from the Web Store) may start it", m["allowed_origins"] == [ORIGIN, STORE_ORIGIN], json.dumps(m["allowed_origins"]))
 before = os.stat(files[0]).st_mtime_ns
 subprocess.run([APP, "--register-native-host"], env=env, capture_output=True, timeout=20)
 check("register: running it again changes nothing", os.stat(files[0]).st_mtime_ns == before)

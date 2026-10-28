@@ -107,10 +107,6 @@ Without the ADM app the extension does nothing and the browser downloads files n
 
 ## After the first upload
 
-The Store gives the extension a new ID, different from the one used when the extension is loaded unpacked. ADM's browser launcher only accepts IDs it knows, so:
+The Store gives the extension an ID different from the one used when it is loaded unpacked, and ADM's browser launcher only accepts IDs it knows. The Store ID (`lbgnfakfhkaicndhpdpfdeaceokhmnae`) is in `EXTENSION_IDS` in `src-tauri/src/native_host.rs` from ADM 0.2.2 on. Anyone with an older ADM needs to update it for the Store version to start ADM automatically; everything else works with any version.
 
-1. Send the 32-letter item ID to the maintainer (or add it to `EXTENSION_IDS` in `src-tauri/src/native_host.rs`).
-2. Release a new ADM version that includes it. Until then the Store version works for everything except starting ADM automatically.
-3. Publish the item for review from the dashboard (**Submit for review**).
-
-Reviews of extensions with `nativeMessaging` and optional access to all sites can take longer than usual. Reply to reviewer questions from the dashboard.
+Then publish the item for review from the dashboard (**Submit for review**). Reviews of extensions with `nativeMessaging` and optional access to all sites can take longer than usual. Reply to reviewer questions from the dashboard.
