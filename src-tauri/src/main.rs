@@ -1084,7 +1084,8 @@ mod tests {
         assert_eq!(ids.len(), 3, "each gets its own id");
         assert_eq!((flat[0].total, flat[1].total), (Some(10), None));
         let sorted = records_from_batch(&p, Path::new("/d"), 8, true);
-        assert_eq!(sorted.iter().map(|r| r.dir.to_str().unwrap()).collect::<Vec<_>>(), ["/d/Video", "/d/Compressed", "/d/Documents"], "filed by type when sorting is on");
+        // Compared as paths: Windows joins with a backslash.
+        assert_eq!(sorted.iter().map(|r| r.dir.clone()).collect::<Vec<_>>(), ["Video", "Compressed", "Documents"].map(|c| Path::new("/d").join(c)), "filed by type when sorting is on");
     }
 
     #[test]
