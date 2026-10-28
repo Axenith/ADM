@@ -15,7 +15,9 @@ const enhancedOnly = ENHANCED ? test : test.skip;
 const seen = [];
 let mode = "adm"; // adm | other | refuse
 let blocked = []; // the sites ADM says not to capture
-let rules = {}; // ADM's capture rules ({ fileExts, captureOverMB }); none = an ADM that takes everything
+let rules = {};
+let hostMode = "missing"; // missing | ok | fails: whether the browser knows the program that starts ADM
+const nativeCalls = []; // ADM's capture rules ({ fileExts, captureOverMB }); none = an ADM that takes everything
 const server = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -64,7 +66,16 @@ globalThis.chrome = {
   },
   permissions: { contains: async (q) => { perm.asked.push(q); return perm.granted; }, onAdded: { addListener: (fn) => (listeners.permAdded = fn) } },
   tabs: { create: (o) => void calls.push(["tab", o.url]), onUpdated: { addListener: (fn) => (listeners.tabUpdated = fn) }, onRemoved: { addListener: (fn) => (listeners.tabRemoved = fn) } },
-  runtime: { getURL: (p) => "chrome-extension://test/" + p, onInstalled: { addListener: (fn) => (listeners.installed = fn) }, onStartup: { addListener() {} } },
+  runtime: {
+    // The program that starts ADM: when the browser knows it, "starting" makes the mock ADM answer.
+    sendNativeMessage: async (host, msg) => {
+      nativeCalls.push([host, msg]);
+      if (hostMode === "missing") throw new Error("Specified native messaging host not found.");
+      if (hostMode === "fails") return { ok: false, error: "no" };
+      setTimeout(() => { mode = "adm"; }, 150);
+      return { ok: true, running: false };
+    },
+    getURL: (p) => "chrome-extension://test/" + p, onInstalled: { addListener: (fn) => (listeners.installed = fn) }, onStartup: { addListener() {} } },
   contextMenus: { create: (o) => calls.push(["menu", o.id]), onClicked: { addListener: (fn) => (listeners.menu = fn) } },
   action: { setBadgeText: (o) => { if (o.tabId !== undefined) tabBadge[o.tabId] = o.text; else badge = o.text; }, setBadgeBackgroundColor() {}, setTitle: (o) => (title = o.title), setIcon: (o) => (icon = o.path[16]) },
   alarms: { create() {}, onAlarm: { addListener: (fn) => (listeners.alarm = fn) } },
@@ -75,7 +86,7 @@ const adm = await import("../adm.js");
 adm.setAdmUrl(URL_);
 await import("../background.js");
 
-const reset = () => { rules = {}; for (const k of Object.keys(session)) delete session[k]; for (const k of Object.keys(tabBadge)) delete tabBadge[k]; blocked = []; seen.length = 0; calls.length = 0; perm.granted = true; perm.asked.length = 0; badge = ""; mode = "adm"; for (const k of Object.keys(store)) delete store[k]; };
+const reset = () => { hostMode = "missing"; nativeCalls.length = 0; rules = {}; for (const k of Object.keys(session)) delete session[k]; for (const k of Object.keys(tabBadge)) delete tabBadge[k]; blocked = []; seen.length = 0; calls.length = 0; perm.granted = true; perm.asked.length = 0; badge = ""; mode = "adm"; for (const k of Object.keys(store)) delete store[k]; };
 const item = (extra = {}) => ({ id: 7, url: "https://files.example/a.zip", referrer: "https://files.example/page", filename: "/home/me/Downloads/a.zip", fileSize: 5_000_000, mime: "application/zip", ...extra });
 let requestCounter = 0;
 /**
@@ -388,6 +399,87 @@ enhancedOnly("the request memory stays small", () => {
   for (let i = 0; i < 500; i++) listeners.sendHeaders({ requestId: "m" + i, url: "https://x.example/" + i, method: "GET", tabId: 1, requestHeaders: [] });
   assert.equal(listeners.sendHeadersArgs[1].includes("extraHeaders"), true, "Cookie and Authorization are only visible with extraHeaders");
   assert.ok(listeners.sendHeadersArgs[0].types.every((t) => !["image", "script", "stylesheet", "font"].includes(t)), "images and scripts are not even watched");
+});
+
+// ---- Starting ADM when it is needed -----------------------------------------------------------------------------
+/** ADM was running once (so its rules are known), and now it is not. */
+async function adminWasSeenThenStopped() { await adm.admState(); mode = "other"; seen.length = 0; }
+
+test("ADM off: a captured download starts ADM, then is handed over", async () => {
+  reset(); await adm.admState(); mode = "other"; hostMode = "ok"; seen.length = 0;
+  await download(item());
+  assert.equal(nativeCalls.length, 1);
+  assert.deepEqual(nativeCalls[0], ["dev.adm.launcher", { op: "start" }]);
+  assert.ok(seen.some((r) => r.path === "/download"), "once ADM answered, the download went to it");
+  assert.deepEqual(calls.filter((c) => c[0] === "cancel"), [["cancel", 7]], "and the browser's copy was cancelled");
+});
+
+test("ADM off and the browser does not know where it is: the browser keeps the download", async () => {
+  reset(); await adminWasSeenThenStopped(); hostMode = "missing";
+  await download(item());
+  assert.equal(nativeCalls.length, 1, "it tried");
+  assert.equal(seen.some((r) => r.path === "/download"), false);
+  assert.deepEqual(calls, [], "nothing cancelled: the download is never lost");
+});
+
+test("ADM off and it does not start: the browser keeps the download", async () => {
+  reset(); await adminWasSeenThenStopped(); hostMode = "fails";
+  await download(item());
+  assert.deepEqual(calls, []);
+});
+
+test("ADM off: only what ADM would have taken starts it", async () => {
+  reset(); rules = { fileExts: ["ZIP"], captureOverMB: 20 }; await adm.admState(); mode = "other"; hostMode = "ok";
+  await download(item({ url: "https://files.example/notes.txt", filename: "/d/notes.txt", fileSize: 1000 }));
+  assert.equal(nativeCalls.length, 0, "a small text file is not worth starting ADM for");
+  blocked = ["files.example"]; mode = "adm"; await adm.admState(); mode = "other";
+  await download(item());
+  assert.equal(nativeCalls.length, 0, "a site the user chose not to capture neither");
+});
+
+test("ADM never seen: nothing is started for a browser download", async () => {
+  reset(); mode = "other"; hostMode = "ok";
+  await download(item());
+  assert.equal(nativeCalls.length, 0);
+});
+
+test("starting ADM can be turned off", async () => {
+  reset(); await adminWasSeenThenStopped(); hostMode = "ok";
+  store.autoStart = false;
+  await download(item());
+  assert.equal(nativeCalls.length, 0);
+  assert.deepEqual(calls, []);
+  await listeners.menu({ menuItemId: "adm-link", linkUrl: "https://files.example/big.iso" }, {});
+  assert.equal(nativeCalls.length, 0, "the right-click menu respects it too");
+  assert.equal(badge, "!");
+});
+
+test("the right-click menu starts ADM", async () => {
+  reset(); await adminWasSeenThenStopped(); hostMode = "ok";
+  await listeners.menu({ menuItemId: "adm-link", linkUrl: "https://files.example/big.iso", pageUrl: "https://files.example/" }, {});
+  assert.equal(nativeCalls.length, 1);
+  assert.equal(JSON.parse(seen.find((r) => r.path === "/download").body).url, "https://files.example/big.iso");
+  assert.equal(badge, "✓");
+});
+
+test("grabbed links start ADM too", async () => {
+  reset(); await adminWasSeenThenStopped(); hostMode = "ok";
+  assert.equal(await adm.sendBatch([{ url: "https://files.example/a.zip" }, { url: "https://files.example/b.zip" }]), 0, "the mock ADM has no /batch: the point is that it was started");
+  assert.equal(nativeCalls.length, 1);
+  assert.ok(seen.some((r) => r.path === "/batch"));
+});
+
+test("several downloads at once start ADM once", async () => {
+  reset(); await adminWasSeenThenStopped(); hostMode = "ok";
+  await Promise.all([download(item({ id: 1, url: "https://files.example/a.zip" })), download(item({ id: 2, url: "https://files.example/b.zip" })), download(item({ id: 3, url: "https://files.example/c.zip" }))]);
+  assert.equal(nativeCalls.length, 1, "one launch, not three");
+  assert.equal(seen.filter((r) => r.path === "/download").length, 3);
+});
+
+test("ADM already running: nothing is started", async () => {
+  reset(); hostMode = "ok";
+  await download(item());
+  assert.equal(nativeCalls.length, 0);
 });
 
 test.after(() => server.close());

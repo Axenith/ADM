@@ -19,6 +19,7 @@ Works in Brave, Chrome and other Chromium browsers. Firefox is not supported yet
 - **Grab all links for this page…**: lists the page's links by type (video, audio, archives, documents, programs,
   images, pages) with a filter box; select some and send them to ADM as one group (one window, not one per link).
 - **Right-click a link, video or audio, then "Download with ADM".**
+- **Starts ADM when it is needed.** Clicking *Download* in the popup, *Download with ADM*, or a browser download that ADM would take, opens ADM in the tray if it is not running, then hands the download over. ADM has to have been started once (it tells your browser where it is). Turn it off in the extension's options. If ADM cannot be started, the browser downloads as usual.
 - **Never loses a download.** If ADM is not running, or refuses a link, the browser downloads it as usual.
 - **"Don't capture downloads from this site"** (in ADM's New download window, or its Settings) makes the extension
   leave that site's downloads to the browser from then on.
@@ -29,7 +30,7 @@ pages cannot reach it. Nothing is sent to any server on the internet.
 
 ## Permissions
 
-Installing asks for very little: `downloads` (to take over a download), `contextMenus`, `storage`, `alarms`,
+Installing asks for very little: `downloads` (to take over a download), `nativeMessaging` (to start ADM when it is not running; it talks only to ADM's own launcher, `dev.adm.launcher`), `contextMenus`, `storage`, `alarms`,
 `activeTab` and `scripting` (to read a page's links only when you press "Grab all links"), and access to ADM on
 `127.0.0.1:8598`.
 

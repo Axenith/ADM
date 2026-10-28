@@ -1,6 +1,7 @@
 // Hide the console window on Windows release builds.
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
+mod native_host;
 mod server;
 mod store;
 
@@ -853,8 +854,23 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 fn main() {
-    // The port is the single-instance lock: a second launch hands over to the first and exits.
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // The browser extension starts ADM through this: answer its one message and leave (no window, no lock).
+    if native_host::is_host_launch(&args) {
+        return native_host::run();
+    }
+    match args.first().map(String::as_str) {
+        Some("--register-native-host") => {
+            for f in native_host::register() {
+                println!("registered {}", f.display());
+            }
+            return;
+        }
+        Some("--unregister-native-host") => return native_host::unregister(),
+        _ => {}
+    }
+    let background = args.iter().any(|a| a == "--background");
+    // The port is the single-instance lock: a second launch hands over to the first and exits.
     let listener = match server::acquire(&args) {
         server::Acquired::Primary(l) => Some(l),
         server::Acquired::AnotherInstance => return,
@@ -887,6 +903,18 @@ fn main() {
                 db_path,
             }));
             build_tray(app)?;
+            // Started by the extension: live in the tray, no window until a download needs one.
+            if background {
+                if let Some(w) = app.get_webview_window(MAIN) {
+                    let _ = w.destroy();
+                }
+            }
+            // Keep the browsers' record of where ADM is up to date (not for the isolated copies the tests run).
+            if std::env::var_os("ADM_PORT").is_none() && std::env::var_os("ADM_DATA_DIR").is_none() {
+                std::thread::spawn(|| {
+                    native_host::register();
+                });
+            }
             if let Some(listener) = listener {
                 let (handle, st): (AppHandle, Shared) = (app.handle().clone(), app.state::<Shared>().inner().clone());
                 tauri::async_runtime::spawn(server::serve(listener, handle, st));

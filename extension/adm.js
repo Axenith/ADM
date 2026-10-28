@@ -11,7 +11,7 @@ export function setAdmUrl(url) { ADM_URL = url; }
 /** Where people can get ADM. Empty until ADM has a public home; the pages hide the link while it is empty. */
 export const ADM_HOME = "";
 
-export const DEFAULTS = { enabled: true, minSizeMB: 0, monitoring: true };
+export const DEFAULTS = { enabled: true, minSizeMB: 0, monitoring: true, autoStart: true };
 
 export async function settings() {
   const stored = await chrome.storage.local.get(DEFAULTS);
@@ -34,10 +34,54 @@ export async function admState() {
     const res = await admFetch("/sync");
     if (!res.ok) return null;
     const body = await res.json();
-    return body?.app === "adm" ? body : null; // not any other program that happens to answer on the port
+    if (body?.app !== "adm") return null; // not any other program that happens to answer on the port
+    rememberRules(body);
+    return body;
   } catch {
     return null;
   }
+}
+
+// What ADM last said about what it takes over, kept so a download can be recognised while ADM is off.
+function rememberRules(body) {
+  const rules = { fileExts: body.fileExts, captureOverMB: body.captureOverMB, blockedHosts: body.blockedHosts || [] };
+  Promise.resolve(chrome.storage.local.set({ admRules: rules })).catch(() => {});
+}
+
+/** ADM's rules as of the last time it was running, or null if it has never been seen. */
+export async function lastKnownRules() {
+  const { admRules } = await chrome.storage.local.get({ admRules: null });
+  return admRules;
+}
+
+/** The program that starts ADM for the extension (see src-tauri/src/native_host.rs). */
+export const HOST = "dev.adm.launcher";
+let starting = null;
+
+/**
+ * ADM's state, starting ADM first if it is not running (and the user has not turned that off). Clicking "download"
+ * should work whether or not ADM was already open. Resolves null if ADM cannot be reached: it was never run (so the
+ * browser does not know where it is), or it did not come up.
+ */
+export async function ensureAdm() {
+  const now = await admState();
+  if (now || !(await settings()).autoStart) return now;
+  // Several downloads at once start ADM once.
+  starting ??= (async () => {
+    try {
+      const r = await chrome.runtime.sendNativeMessage(HOST, { op: "start" });
+      if (!r?.ok) return null;
+    } catch {
+      return null; // the browser has no record of ADM yet
+    }
+    for (let i = 0; i < 40; i++) { // up to about 12 seconds
+      await new Promise((r) => setTimeout(r, 300));
+      const s = await admState();
+      if (s) return s;
+    }
+    return null;
+  })().finally(() => { starting = null; });
+  return starting;
 }
 
 /** True only for ADM itself. */
@@ -161,6 +205,7 @@ export function toReplay(requestHeaders) {
  * from, the name the browser chose. Resolves true only if ADM accepted it.
  */
 export async function handOver({ url, referrer, filename, fileSize, mime, replay }) {
+  if (!(await ensureAdm())) return false;
   const body = {
     url,
     // The cookies the browser really sent, when it was watched; else the ones it would send (if allowed).
@@ -188,6 +233,7 @@ export async function handOver({ url, referrer, filename, fileSize, mime, replay
  * grouped by site so each group carries the cookies for its own site. Resolves with how many links ADM accepted.
  */
 export async function sendBatch(links, { referrer } = {}) {
+  if (!(await ensureAdm())) return 0;
   const byOrigin = new Map();
   for (const l of links) {
     try { const o = new URL(l.url).origin; byOrigin.set(o, [...(byOrigin.get(o) || []), l]); } catch { /* skip */ }

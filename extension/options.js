@@ -32,6 +32,8 @@ function feature(prefix, has, ask, drop, after = async () => {}) {
   const s = await settings();
   $("enabled").checked = s.enabled;
   $("min").value = s.minSizeMB;
+  $("autostart").checked = s.autoStart;
+  $("autostart").addEventListener("change", () => chrome.storage.local.set({ autoStart: $("autostart").checked }));
   $("enabled").addEventListener("change", () => chrome.storage.local.set({ enabled: $("enabled").checked }));
   $("min").addEventListener("change", () => chrome.storage.local.set({ minSizeMB: Math.max(0, Number($("min").value) || 0) }));
   feature("cookies", cookieAccessEverywhere, requestCookieAccess, dropCookieAccess);

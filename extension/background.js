@@ -1,4 +1,4 @@
-import { admState, capturedByRules, handOver, isAlive, settings, siteBlocked, toReplay, wantsCapture, baseName } from "./adm.js";
+import { admState, capturedByRules, handOver, isAlive, lastKnownRules, settings, siteBlocked, toReplay, wantsCapture, baseName } from "./adm.js";
 import { addEntry, classify, mediaKey } from "./media.js";
 import { openGrab } from "./grab-open.js";
 
@@ -10,7 +10,10 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
     let taken = false;
     try {
       const s = await settings();
-      const adm = wantsCapture(item, s) ? await admState() : null;
+      let adm = wantsCapture(item, s) ? await admState() : null;
+      // ADM is off: judge the download by what ADM last said it takes (it is started when it is taken). A browser
+      // that has never seen ADM has no rules, so nothing is started for it.
+      if (!adm && s.autoStart && wantsCapture(item, s)) adm = await lastKnownRules();
       // ADM keeps the capture rules and the list of sites the user chose not to capture.
       if (adm && capturedByRules(item, adm) && !siteBlocked(adm.blockedHosts, item.referrer, item.url)) {
         let replay;
@@ -56,7 +59,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const url = info.linkUrl || info.srcUrl;
   if (!/^https?:/i.test(url || "")) return;
   if (tab?.incognito) return flash("!", "#dc3f55");
-  const ok = (await isAlive()) && (await handOver({ url, referrer: info.pageUrl || tab?.url, filename: baseName(new URL(url).pathname) }));
+  const ok = await handOver({ url, referrer: info.pageUrl || tab?.url, filename: baseName(new URL(url).pathname) });
   if (ok) flash("✓", "#14966a");
   else flash("!", "#dc3f55");
 });

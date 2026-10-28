@@ -9,7 +9,7 @@ const CHECK = '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
 const PLAY = '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10.5 9.4 4.2 2.6-4.2 2.6z" fill="currentColor"/></svg>';
 const NOTE = '<svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>';
 
-let tab = null, items = [], alive = false, expanded = false, access = false, monitoring = true;
+let tab = null, items = [], alive = false, autoStart = true, expanded = false, access = false, monitoring = true;
 
 /** The tab this popup is about: the one in front (or `?tab=` when a page opens this popup directly). */
 async function currentTab() {
@@ -40,7 +40,7 @@ function render() {
       ? "Browser monitoring is off."
       : "No videos found on this page yet. Play a video and it will show up here.";
   $("banner").hidden = alive;
-  $("banner").textContent = alive ? "" : "ADM is not running. Start ADM to download.";
+  $("banner").textContent = alive ? "" : autoStart ? "ADM is not running. It starts when you download." : "ADM is not running. Start ADM to download.";
 }
 
 function row(item) {
@@ -68,13 +68,14 @@ function row(item) {
   button.title = "Download with ADM";
   button.setAttribute("aria-label", "Download with ADM");
   button.innerHTML = DOWNLOAD;
-  button.disabled = !alive;
+  button.disabled = !alive && !autoStart;
   button.addEventListener("click", () => download(item, button));
   li.append(ico, text, button);
   return li;
 }
 
 async function download(item, button) {
+  if (!alive) say("Starting ADM…");
   const ok = await handOver({ url: item.url, referrer: tab?.url, filename: mediaFileName(item, tab?.title), fileSize: item.size, mime: item.mime, replay: item.replay });
   if (!ok) return say("Couldn't reach ADM. Is it running?");
   say("");
@@ -127,7 +128,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 (async () => {
   tab = await currentTab();
-  [access, monitoring, alive] = [await monitoringAccess(), (await settings()).monitoring, (await admState()) !== null];
+  const s = await settings();
+  [access, monitoring, autoStart, alive] = [await monitoringAccess(), s.monitoring, s.autoStart, (await admState()) !== null];
   await loadItems();
   render();
 })();

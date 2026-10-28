@@ -9,6 +9,7 @@ apps="$HOME/.local/share/applications"
 icons="$HOME/.local/share/icons/hicolor"
 
 if [ "${1:-}" = "--uninstall" ]; then
+  [ -x "$bin/adm" ] && "$bin/adm" --unregister-native-host 2>/dev/null || true
   rm -f "$bin/adm" "$bin/adm-dl" "$apps/adm.desktop" "$icons/128x128/apps/adm.png" "$icons/512x512/apps/adm.png"
   command -v update-desktop-database >/dev/null && update-desktop-database "$apps" 2>/dev/null || true
   echo "ADM removed. Your downloads and ADM's list (~/.local/share/dev.adm.downloadmanager) were left alone."
@@ -17,6 +18,8 @@ fi
 
 install -Dm755 "$here/adm" "$bin/adm"
 [ -f "$here/adm-dl" ] && install -Dm755 "$here/adm-dl" "$bin/adm-dl"
+# Tell the browsers where ADM is, so the extension can start it.
+"$bin/adm" --register-native-host >/dev/null 2>&1 || true
 install -Dm644 "$here/icons/128.png" "$icons/128x128/apps/adm.png"
 install -Dm644 "$here/icons/512.png" "$icons/512x512/apps/adm.png"
 

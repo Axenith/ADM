@@ -67,6 +67,10 @@ pub fn acquire(args: &[String]) -> Acquired {
     if !is_adm() {
         return Acquired::PortTaken;
     }
+    // Started in the background (by the extension) while ADM is already up: nothing to show.
+    if args.iter().any(|a| a == "--background") {
+        return Acquired::AnotherInstance;
+    }
     let body = json!({ "args": args }).to_string();
     if matches!(local_request("POST", "/show", &body), Some((200, _))) {
         return Acquired::AnotherInstance;
@@ -78,7 +82,7 @@ pub fn acquire(args: &[String]) -> Acquired {
     }
 }
 
-fn is_adm() -> bool {
+pub fn is_adm() -> bool {
     matches!(local_request("GET", "/sync", ""), Some((200, body)) if body.contains("\"app\":\"adm\""))
 }
 

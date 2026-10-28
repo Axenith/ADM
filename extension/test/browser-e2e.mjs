@@ -3,7 +3,7 @@
 // A copy of the extension is pointed at a stand-in ADM on a spare port, so a running ADM is left alone.
 // Checks: a real download is handed over and cancelled; with ADM off the browser downloads it itself;
 // the popup and welcome pages load without errors.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
@@ -85,7 +85,7 @@ const brave = spawn(process.env.BROWSER || "brave", [
   "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-component-update",
   "--disable-sync", `--user-data-dir=${profile}`, `--remote-debugging-port=${DEBUG_PORT}`, `--load-extension=${extDir}`,
   "--disable-features=DisableLoadExtensionCommandLineSwitch", "about:blank",
-], { stdio: "ignore", detached: true });
+], { stdio: "ignore", detached: true, env: { ...process.env, ADM_PORT: String(ADM_PORT), ADM_DATA_DIR: path.join(tmp, "adm-data"), XDG_CONFIG_HOME: path.join(tmp, "config") } }); // the real ADM that phase F makes the browser start inherits these
 const killBrowser = () => { try { process.kill(-brave.pid, "SIGKILL"); } catch {} };
 process.on("exit", killBrowser);
 
@@ -278,6 +278,37 @@ try {
       fs.writeFileSync(path.join(process.env.SHOTS_DIR, name.replace(".html", ".png")), Buffer.from(data, "base64"));
     }
   }
+
+  // F: ADM is NOT running and the browser knows how to start it: the download starts the REAL ADM (through a real
+  // native messaging host), which then receives the download. The browser finds the host in its profile folder.
+  adm.closeAllConnections?.(); await new Promise((r) => adm.close(r)); admSeen.length = 0;
+  const ADM_BIN = process.env.ADM_BIN || path.join(here, "..", "..", "target", "release", "adm");
+  const dataDir = path.join(tmp, "adm-data"), dlDir = path.join(tmp, "adm-dl");
+  fs.mkdirSync(dataDir, { recursive: true }); fs.mkdirSync(dlDir, { recursive: true });
+  fs.writeFileSync(path.join(dataDir, "downloads.json"), JSON.stringify({ settings: { download_dir: dlDir, ask_before_download: true }, records: [], pending: [] }));
+  // The browser reads host files from its config folder (the browser here has a temporary one, so the real one is untouched).
+  const hostDir = path.join(tmp, "config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts");
+  fs.mkdirSync(hostDir, { recursive: true });
+  fs.writeFileSync(path.join(hostDir, "dev.adm.launcher.json"), JSON.stringify({
+    name: "dev.adm.launcher", description: "test", path: ADM_BIN, type: "stdio", allowed_origins: [`chrome-extension://${extId}/`],
+  }));
+  check("F: the extension has the id the app allows (pinned by the key in manifest.json)", extId === "hncgajannlpkmglkanljjngglcjhbdnm", extId);
+  const up = async () => { try { return (await fetch(`http://127.0.0.1:${ADM_PORT}/sync`)).ok; } catch { return false; } };
+  check("F: before: ADM is not running", !(await up()));
+  await evaluate(swA, "__spy.cancels.length = 0; __spy.suggests = 0");
+  const page4 = await tab(`http://127.0.0.1:${WEB_PORT}/page.html`);
+  await sleep(1500);
+  await evaluate(page4.sessionId, 'document.getElementById("a").click()');
+  const started = await waitFor(up, 30000);
+  check("F: the download made the browser start ADM", !!started);
+  const pendingFile = path.join(dataDir, "downloads.json");
+  const got = await waitFor(() => { try { return JSON.parse(fs.readFileSync(pendingFile, "utf8")).pending?.some((p) => p.url.endsWith("/files/test.bin")); } catch { return false; } }, 20000);
+  check("F: ...and ADM received the download (waiting in its New download window)", !!got);
+  const spyF = JSON.parse(await evaluate(swA, "JSON.stringify(__spy)"));
+  check("F: ...and the browser's own copy was cancelled", spyF.cancels.length === 1, JSON.stringify(spyF));
+  // Stop only the ADM this test started: the one listening on the test port, after checking what it is.
+  const pid = (/pid=(\d+)/.exec(execFileSync("ss", ["-ltnpH", `sport = :${ADM_PORT}`]).toString()) || [])[1];
+  if (pid && fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").startsWith(ADM_BIN)) process.kill(Number(pid), "SIGTERM");
 } catch (e) {
   check("no unexpected error", false, String(e.stack || e));
 } finally {

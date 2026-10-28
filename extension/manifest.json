@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "ADM Download Manager",
   "short_name": "ADM",
-  "version": "0.4.0",
+  "version": "0.5.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw5yAoScO9rw8vzh5OW/Nmn8qVsfBfwByYNe/b9Y1gck3gZMmUAmBdlRaivW4cipqcY1cFBIJvvREXiJBvVbdThzuuUpBFGrYe8jPSShZqYY+925SM6lPq5ekSLRneqHrcAFGGfnqjPTE6xQ7b0qA92G/vcpGOpBGc9kptd7oupcwvitN2VBCI1fG8AmNSOPQuQ+Ory7YZevddSGV9jaRFZNhbIKl36BiUd8iyCSMlgds0NS18COcUSfHr3kIgKhaltZM7/Ft7t0TC3MLYVyLzKwJ82CA8c0wk5fpWMeWW/8LKkeJODuVksoSYCLcD1J63ZJPgp46kEI2laU6MgyXzwIDAQAB",
   "description": "Sends your browser's downloads to the ADM app: a fast, lightweight download manager with multi-connection speed and resume.",
   "homepage_url": "https://github.com/Axenith/ADM",
   "minimum_chrome_version": "110",
@@ -18,7 +19,8 @@
     "storage",
     "alarms",
     "activeTab",
-    "scripting"
+    "scripting",
+    "nativeMessaging"
   ],
   "optional_permissions": [
     "cookies",
@@ -45,7 +47,9 @@
   },
   "commands": {
     "grab-links": {
-      "suggested_key": { "default": "Alt+Shift+G" },
+      "suggested_key": {
+        "default": "Alt+Shift+G"
+      },
       "description": "Grab the links and files of this page"
     }
   },
