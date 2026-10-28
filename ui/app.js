@@ -4,7 +4,8 @@ const { listen } = window.__TAURI__.event;
 
 const $ = (id) => document.getElementById(id);
 const list = $("list");
-const rows = new Map(); // id -> { li, data }
+const rows = new Map(); // id -> { li, data, seq }
+let seq = 0; // the order rows arrived in: "date added"
 
 // ---------- formatting ----------
 function bytes(n) {
@@ -187,9 +188,9 @@ function setBar(li, r) {
 function render(r) {
   let entry = rows.get(r.id);
   if (!entry) {
-    entry = { li: makeRow(r), data: r };
+    entry = { li: makeRow(r), data: r, seq: ++seq };
     rows.set(r.id, entry);
-    list.prepend(entry.li);
+    list.append(entry.li);
   }
   entry.data = r;
   const { li } = entry;
@@ -210,41 +211,185 @@ function render(r) {
   summarize();
 }
 
-// ---------- tabs, counts, status bar, empty state ----------
-let filter = "all";
+// ---------- the view: library, file type, search, sort ----------
+const LIBS = { all: "All Downloads", incomplete: "Incomplete", completed: "Completed" };
+const TYPES = { all: "All Types", doc: "Documents", archive: "Compressed", audio: "Music", video: "Video", app: "Programs", other: "Other" };
+const SORTS = {
+  "date-new": "Date added (newest first)", "date-old": "Date added (oldest first)", name: "Name (A to Z)",
+  size: "Size (largest first)", type: "File type", status: "Status (active first)",
+};
+const ORDER = { downloading: 0, queued: 1, paused: 2, failed: 3, completed: 4 };
+const view = { lib: "all", type: "all", q: "", sort: "date-new" };
+try { Object.assign(view, JSON.parse(localStorage.getItem("adm-view") || "{}"), { q: "" }); } catch { /* a remembered view is a convenience */ }
+if (!(view.lib in LIBS)) view.lib = "all";
+if (!(view.type in TYPES)) view.type = "all";
+if (!(view.sort in SORTS)) view.sort = "date-new";
+const saveView = () => { try { localStorage.setItem("adm-view", JSON.stringify({ lib: view.lib, type: view.type, sort: view.sort })); } catch { /* fine */ } };
+
+const inLib = (r) => view.lib === "all" || (view.lib === "completed" ? r.status === "completed" : r.status !== "completed");
+const matches = (r) => {
+  if (!view.q) return true;
+  const hay = (r.name + " " + r.url).toLowerCase();
+  return view.q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
+};
+const COMPARE = {
+  "date-new": (a, b) => b.seq - a.seq,
+  "date-old": (a, b) => a.seq - b.seq,
+  name: (a, b) => a.data.name.localeCompare(b.data.name, undefined, { numeric: true, sensitivity: "base" }) || b.seq - a.seq,
+  size: (a, b) => (b.data.total ?? b.data.downloaded) - (a.data.total ?? a.data.downloaded) || b.seq - a.seq,
+  type: (a, b) => kindOf(a.data.name)[0].localeCompare(kindOf(b.data.name)[0]) || b.seq - a.seq,
+  status: (a, b) => ORDER[a.data.status] - ORDER[b.data.status] || b.seq - a.seq,
+};
+
+let pending = false;
+/** Redraws counts, which rows show, their order and the status bar, once per burst of updates. */
 function summarize() {
-  const n = { all: 0, progress: 0, completed: 0, failed: 0 };
-  let active = 0, speed = 0, waiting = 0;
-  for (const { data: r } of rows.values()) {
-    n.all++;
-    if (r.status === "downloading" || r.status === "paused" || r.status === "queued") n.progress++;
-    if (r.status === "queued") waiting++;
-    if (r.status === "completed") n.completed++;
-    if (r.status === "failed") n.failed++;
-    if (r.status === "downloading") { active++; speed += r.speed || 0; }
-  }
-  document.querySelectorAll("#tabs button").forEach((b) => { b.querySelector("b").textContent = n[b.dataset.filter]; });
-  $("st-left").textContent = (active ? `${active} downloading` : n.all ? `${n.all} download${n.all > 1 ? "s" : ""}` : "Ready") + (waiting ? ` · ${waiting} waiting` : "");
-  $("st-speed").textContent = active && speed > 0 ? `${bytes(speed)}/s` : "";
-  const shown = n[filter];
-  $("empty").hidden = shown > 0;
-  const msg = { all: ["No downloads yet", "Paste a link above. Big files are split across several connections, so they finish sooner."],
-    progress: ["Nothing in progress", "Downloads that are running or paused show up here."],
-    completed: ["Nothing completed yet", "Finished downloads show up here."],
-    failed: ["No failed downloads", "Anything that could not finish shows up here, with a Retry button."] }[filter];
-  $("empty-title").textContent = msg[0];
-  $("empty-sub").textContent = msg[1];
+  if (pending) return;
+  pending = true;
+  setTimeout(() => { pending = false; refresh(); }, 0);
 }
-$("tabs").addEventListener("click", (e) => {
-  const b = e.target.closest("button");
-  if (!b) return;
-  filter = b.dataset.filter;
-  list.dataset.filter = filter;
-  document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
-  summarize();
+
+function refresh() {
+  const entries = [...rows.values()];
+  const lib = { all: 0, incomplete: 0, completed: 0 };
+  const type = { all: 0, doc: 0, archive: 0, audio: 0, video: 0, app: 0, other: 0 };
+  let active = 0, speed = 0, waiting = 0, shown = 0;
+  for (const e of entries) {
+    const r = e.data;
+    lib.all++;
+    lib[r.status === "completed" ? "completed" : "incomplete"]++;
+    if (r.status === "queued") waiting++;
+    if (r.status === "downloading") { active++; speed += r.speed || 0; }
+    // File types are counted inside the chosen library, so the numbers match what a click on them shows.
+    if (inLib(r)) { type.all++; type[kindOf(r.name)[0]]++; }
+  }
+  for (const b of document.querySelectorAll("#lib button")) b.querySelector("b").textContent = lib[b.dataset.lib];
+  for (const b of document.querySelectorAll("#types button")) {
+    b.querySelector("b").textContent = type[b.dataset.type];
+    if (b.dataset.type === "other") b.hidden = type.other === 0 && view.type !== "other";
+  }
+  const sorted = entries.sort(COMPARE[view.sort]);
+  for (const e of sorted) {
+    const show = inLib(e.data) && (view.type === "all" || kindOf(e.data.name)[0] === view.type) && matches(e.data);
+    e.li.hidden = !show;
+    if (show) shown++;
+  }
+  // Only touch the DOM order when it is wrong: this runs on every progress update.
+  const want = sorted.map((e) => e.li);
+  if (want.some((li, i) => list.children[i] !== li)) list.append(...want);
+
+  $("st-left").textContent = (active ? `${active} downloading` : lib.all ? `${lib.all} download${lib.all > 1 ? "s" : ""}` : "Ready") + (waiting ? ` · ${waiting} waiting` : "");
+  $("st-speed").textContent = active && speed > 0 ? `${bytes(speed)}/s` : "";
+  $("empty").hidden = shown > 0;
+  if (shown === 0) {
+    const m = emptyMessage(lib.all);
+    $("empty-title").textContent = m[0];
+    $("empty-sub").textContent = m[1];
+  }
+}
+
+function emptyMessage(total) {
+  if (view.q) return ["No matches", `Nothing here matches “${view.q}”.`];
+  if (total === 0) return ["No downloads yet", "Click New and paste a link. Big files are split across several connections, so they finish sooner."];
+  if (view.type !== "all") return [`No ${TYPES[view.type].toLowerCase()} here`, `Nothing of this type in “${LIBS[view.lib]}”.`];
+  return view.lib === "completed"
+    ? ["Nothing completed yet", "Finished downloads show up here."]
+    : ["Nothing in progress", "Downloads that are running, paused, waiting or failed show up here."];
+}
+
+/** Marks the chosen sidebar entries and redraws. */
+function setView(patch) {
+  Object.assign(view, patch);
+  for (const b of document.querySelectorAll("#lib button")) b.classList.toggle("on", b.dataset.lib === view.lib);
+  for (const b of document.querySelectorAll("#types button")) b.classList.toggle("on", b.dataset.type === view.type);
+  saveView();
+  refresh();
+}
+$("lib").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setView({ lib: b.dataset.lib }); });
+$("types").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setView({ type: b.dataset.type }); });
+$("q").addEventListener("input", () => setView({ q: $("q").value.trim() }));
+$("q").addEventListener("keydown", (e) => { if (e.key === "Escape" && $("q").value) { $("q").value = ""; setView({ q: "" }); e.stopPropagation(); } });
+
+// ---------- toolbar menus ----------
+let openMenu = null;
+function closeMenu() {
+  if (!openMenu) return;
+  openMenu.menu.hidden = true;
+  openMenu.btn.setAttribute("aria-expanded", "false");
+  openMenu = null;
+}
+/** Opens `menu` under `btn` with `items`: [label, action, { on }] or "-" for a divider. Closes itself on any choice. */
+function showMenu(btn, menu, items) {
+  if (openMenu?.menu === menu) return closeMenu();
+  closeMenu();
+  menu.replaceChildren(...items.map((it) => {
+    if (it === "-") return document.createElement("hr");
+    const [label, fn, opt = {}] = it;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "menuitem");
+    b.textContent = label;
+    b.classList.toggle("on", !!opt.on);
+    b.addEventListener("click", () => { closeMenu(); fn(); });
+    return b;
+  }));
+  menu.hidden = false;
+  btn.setAttribute("aria-expanded", "true");
+  openMenu = { btn, menu };
+}
+document.addEventListener("click", (e) => { if (openMenu && !openMenu.btn.contains(e.target) && !openMenu.menu.contains(e.target)) closeMenu(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+
+$("tb-sort").addEventListener("click", () => showMenu($("tb-sort"), $("sort-menu"),
+  Object.entries(SORTS).map(([id, label]) => [label, () => { view.sort = id; setView({}); }, { on: view.sort === id }])));
+
+const ids = (pred) => [...rows.values()].filter((e) => pred(e.data)).map((e) => e.data.id);
+const each = (list, cmd) => list.forEach((id) => call(cmd, { id }));
+$("tb-more").addEventListener("click", () => showMenu($("tb-more"), $("more-menu"), [
+  ["Pause all", () => each(ids((r) => r.status === "downloading" || r.status === "queued"), "pause")],
+  ["Resume all", () => each(ids((r) => r.status === "paused"), "resume")],
+  "-",
+  ["Retry failed downloads", () => each(ids((r) => r.status === "failed"), "resume")],
+  ["Clear failed downloads", () => each(ids((r) => r.status === "failed"), "remove")],
+]));
+
+// Clear: removes finished downloads from the list (never their files). It asks once, by turning red for a moment.
+let clearTimer = null;
+function disarmClear() {
+  clearTimeout(clearTimer);
+  $("tb-clear").classList.remove("armed");
+  $("tb-clear").querySelector("span").textContent = "Clear";
+}
+$("tb-clear").addEventListener("click", () => {
+  const done = ids((r) => r.status === "completed");
+  if (!done.length) return toast("Nothing to clear: no finished downloads.");
+  if (!$("tb-clear").classList.contains("armed")) {
+    $("tb-clear").classList.add("armed");
+    $("tb-clear").querySelector("span").textContent = `Clear ${done.length}?`;
+    clearTimer = setTimeout(disarmClear, 4000);
+    return;
+  }
+  disarmClear();
+  each(done, "remove");
+  toast(`Cleared ${done.length} finished download${done.length > 1 ? "s" : ""} from the list. The files are still on disk.`);
 });
 
 // ---------- adding links ----------
+function openAdd() {
+  $("add").hidden = false;
+  $("url").focus();
+  $("url").select();
+}
+function closeAdd() { $("add").hidden = true; }
+$("tb-new").addEventListener("click", () => ($("add").hidden ? openAdd() : closeAdd()));
+$("add-x").addEventListener("click", closeAdd);
+$("url").addEventListener("keydown", (e) => { if (e.key === "Escape") closeAdd(); });
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && !document.querySelector("dialog[open]")) {
+    if (e.key.toLowerCase() === "n") { e.preventDefault(); openAdd(); }
+    if (e.key.toLowerCase() === "f") { e.preventDefault(); $("q").focus(); $("q").select(); }
+  }
+});
 $("add").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const links = $("url").value.split(/\s+/).filter(Boolean);
@@ -256,13 +401,15 @@ $("add").addEventListener("submit", async (ev) => {
     try { await invoke("add_download", { url, ask }); } catch (e) { return toast(String(e), true); }
   }
   $("url").value = "";
-  if (filter === "completed" || filter === "failed") $("tabs").querySelector('[data-filter="all"]').click();
+  closeAdd();
+  // What was just added must be visible.
+  if (view.lib === "completed" || view.type !== "all" || view.q) { $("q").value = ""; setView({ lib: "all", type: "all", q: "" }); }
 });
 // Pasting a link anywhere in the window fills the box.
 document.addEventListener("paste", (e) => {
-  if (document.activeElement === $("url") || $("settings").open) return;
+  if (document.activeElement === $("url") || document.activeElement === $("q") || $("settings").open) return;
   const t = (e.clipboardData?.getData("text") || "").trim();
-  if (/^https?:\/\//i.test(t)) { $("url").value = t; $("url").focus(); }
+  if (/^https?:\/\//i.test(t)) { openAdd(); $("url").value = t; }
 });
 
 // ---------- settings ----------
@@ -442,7 +589,8 @@ $("nd-go").addEventListener("click", async () => {
     // folder the user chose, without a category subfolder: that is what gets remembered for next time.
     await invoke("confirm_pending", { id: p.id, name, baseDir: dir, category: "", segments: Math.min(32, Math.max(1, parseInt($("nd-seg").value, 10) || 8)), remember: base });
     finishPending();
-    if ($("tabs").querySelector(".on")?.dataset.filter !== "all") $("tabs").querySelector('[data-filter="all"]').click();
+    // A new download starts out unfinished and of any type: make sure it can be seen.
+    if (view.lib === "completed" || view.type !== "all" || view.q) { $("q").value = ""; setView({ lib: "all", type: "all", q: "" }); }
   } catch (e) {
     $("nd-go").disabled = false;
     toast(String(e), true);
@@ -464,6 +612,6 @@ $("nd-block").addEventListener("click", async () => {
 listen("dl", (e) => render(e.payload));
 listen("new-download", (e) => pushPending(e.payload));
 listen("removed", (e) => { rows.get(e.payload)?.li.remove(); rows.delete(e.payload); summarize(); });
-invoke("list").then((all) => { all.reverse().forEach(render); summarize(); }); // oldest first: each is prepended
+invoke("list").then((all) => { all.reverse().forEach(render); setView({}); }); // oldest first, so a later row is a newer one
 invoke("list_pending").then((all) => all.forEach(pushPending)); // links that arrived while no window was open
 summarize();

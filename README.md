@@ -42,17 +42,18 @@ It is inspired by [XDM (Xtreme Download Manager)](https://github.com/subhra74/xd
 **The app**
 - **"New download" window** like XDM's: file name, category, save folder (with a Browse button), free space, connections, and *Don't capture from this site*. ADM remembers the folder you chose last.
 - **Batches.** Several links arrive in one window instead of one per link.
+- **Sidebar and toolbar.** Library (All Downloads, Incomplete, Completed) and File types (Documents, Compressed, Music, Video, Programs) with live counts; **New**, **Clear** (finished downloads leave the list, their files stay), **Sort** (date, name, size, type, status), **Settings**, search (`Ctrl+F`) and a menu (pause all, resume all, retry or clear failed). `Ctrl+N` opens the link box.
 - Pause, resume, retry, open file, show in file manager, remove, or move the file to the trash.
 - **Runs from the tray.** Closing the window frees the web view's memory; downloads keep going.
 - **One copy only.** Launching ADM again brings up the running one.
-- Dark and light themes. No framework in the UI: plain HTML, CSS and JavaScript (about 40 KB).
+- Dark and light themes. No framework in the UI: plain HTML, CSS and JavaScript (about 50 KB).
 
 **For AI agents**
 - `adm-dl mcp` is an MCP server (Claude Code, opencode, Gemini CLI, Codex, Cursor): `adm_download`, `adm_status`, `adm_cancel`, `adm_probe`. Several connections, resume, checksum check, and long downloads that report back with a job id instead of timing out. No GUI needed. See [docs/AGENTS.md](docs/AGENTS.md).
 - `adm-dl <url> --json` for any agent with a shell: one JSON line when done, meaningful exit codes.
 
 **Browser extension** (Chrome, Brave and other Chromium browsers)
-- Browser downloads open in ADM. If ADM is not running, the browser downloads as usual: a download is never lost.
+- Browser downloads open in ADM. **If ADM is not running, the extension starts it** (in the tray) and hands the download over; if it cannot, the browser downloads as usual: a download is never lost.
 - **You choose what it takes over.** In ADM's settings, list the file types (and a size above which anything is taken); everything else stays with the browser. Sites you mark *Don't capture* are left alone.
 - **Browser monitoring** (opt-in) lists the videos and audio a page loads, with a download button each. Slices of a YouTube-style stream are not listed as videos.
 - **Exact replay** (with monitoring on): the download is repeated with the headers and cookies your browser really sent. A download that is not a plain GET (a file made by a form) stays with the browser, because it cannot be repeated from an address.
@@ -93,7 +94,7 @@ Until it is on the Chrome Web Store, load it yourself:
 
 1. Download `adm-extension-<version>.zip` from [Releases](https://github.com/Axenith/ADM/releases/latest) and unzip it.
 2. Open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**, click **Load unpacked**, choose the unzipped folder.
-3. Start ADM. A page opens that explains the two optional features (login cookies and browser monitoring); neither is on until you allow it. Without either, the extension still takes over downloads and grabs links.
+3. Start ADM once (it tells your browser where it is, so the extension can start it later). A page opens that explains the two optional features (login cookies and browser monitoring); neither is on until you allow it. Without either, the extension still takes over downloads and grabs links.
 
 Turn off other download-manager extensions (including XDM's) while this one is on: only one can take over a browser's downloads.
 
@@ -134,7 +135,7 @@ One server (a LAN server that limits each connection to about 2 MB/s, so paralle
 ## Security and privacy
 
 - The extension and the app talk over **127.0.0.1 only**. ADM refuses a request unless it names the right `Host`, carries no `Origin` or a browser-extension one (so a web page cannot reach it), and, for anything that changes state, is a `POST`.
-- The extension asks for very little at install. **Login cookies** and **browser monitoring** are opt-in, and cookies go only to ADM on your computer. Nothing is sent to any server on the internet by the extension or the app.
+- The extension asks for very little at install. Its `nativeMessaging` permission can start one program, ADM itself (the browser only allows the extension named in ADM's launcher file). **Login cookies** and **browser monitoring** are opt-in, and cookies go only to ADM on your computer. Nothing is sent to any server on the internet by the extension or the app.
 - ADM's list (which can hold session cookies for links that are waiting or resumable) is readable only by you (`0600`).
 - Private browser windows are never captured.
 

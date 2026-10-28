@@ -7,38 +7,65 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="top">
+<div class="app">
+<aside class="side" aria-label="Downloads">
   <div class="brand"><img src="logo.png" width="30" height="30" alt=""><span>ADM</span></div>
-  <form id="add" autocomplete="off">
-    <svg class="lead" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
-    <input id="url" type="text" placeholder="Paste a link to download" spellcheck="false" autofocus>
-    <button class="primary" type="submit">Download</button>
-  </form>
-  <button id="open-settings" class="icon" title="Settings" aria-label="Settings">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-  </button>
-</header>
+  <nav id="lib" aria-label="Library">
+    <h3>Library</h3>
+    <button data-lib="all" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg><span>All Downloads</span><b>0</b></button>
+    <button data-lib="incomplete"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>Incomplete</span><b>0</b></button>
+    <button data-lib="completed"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.3 2.5 2.5 4.5-5"/></svg><span>Completed</span><b>0</b></button>
+  </nav>
+  <nav id="types" aria-label="File types">
+    <h3>File types</h3>
+    <button data-type="all" class="on"><i class="dot" style="--c:#4c8dff"></i><span>All Types</span><b>0</b></button>
+    <button data-type="doc"><i class="dot" style="--c:#8b93a7"></i><span>Documents</span><b>0</b></button>
+    <button data-type="archive"><i class="dot" style="--c:#2fc78b"></i><span>Compressed</span><b>0</b></button>
+    <button data-type="audio"><i class="dot" style="--c:#f2a03d"></i><span>Music</span><b>0</b></button>
+    <button data-type="video"><i class="dot" style="--c:#a78bfa"></i><span>Video</span><b>0</b></button>
+    <button data-type="app"><i class="dot" style="--c:#1fd1a0"></i><span>Programs</span><b>0</b></button>
+    <button data-type="other" hidden><i class="dot" style="--c:#6b7388"></i><span>Other</span><b>0</b></button>
+  </nav>
+</aside>
 
-<nav class="tabs" id="tabs" aria-label="Filter downloads">
-  <button data-filter="all" class="on">All <b>0</b></button>
-  <button data-filter="progress">In progress <b>0</b></button>
-  <button data-filter="completed">Completed <b>0</b></button>
-  <button data-filter="failed">Failed <b>0</b></button>
-</nav>
-
-<main>
-  <ul id="list" data-filter="all"></ul>
-  <div id="empty" class="empty">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
-    <strong id="empty-title">No downloads yet</strong>
-    <span id="empty-sub">Paste a link above. Big files are split across several connections, so they finish sooner.</span>
+<section class="content">
+  <div class="toolbar" role="toolbar" aria-label="Actions">
+    <button id="tb-new" class="tb" title="Add a link (Ctrl+N)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New</span></button>
+    <button id="tb-clear" class="tb" title="Remove finished downloads from the list (the files stay)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg><span>Clear</span></button>
+    <div class="menu-wrap">
+      <button id="tb-sort" class="tb" aria-haspopup="menu" aria-expanded="false" title="Sort the list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></svg><span>Sort</span></button>
+      <div class="menu" id="sort-menu" role="menu" hidden></div>
+    </div>
+    <button id="open-settings" class="tb" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Settings</span></button>
+    <label class="search"><input id="q" type="search" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search downloads"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg></label>
+    <div class="menu-wrap">
+      <button id="tb-more" class="icon" aria-haspopup="menu" aria-expanded="false" title="More" aria-label="More"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <div class="menu right" id="more-menu" role="menu" hidden></div>
+    </div>
   </div>
-</main>
 
-<footer class="status">
-  <span id="st-left">Ready</span>
-  <span id="st-speed"></span>
-</footer>
+  <form id="add" autocomplete="off" hidden>
+    <svg class="lead" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+    <input id="url" type="text" placeholder="Paste a link to download (several links: separate them with spaces)" spellcheck="false">
+    <button class="primary" type="submit">Download</button>
+    <button class="icon" type="button" id="add-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </form>
+
+  <main>
+    <ul id="list"></ul>
+    <div id="empty" class="empty">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
+      <strong id="empty-title">No downloads yet</strong>
+      <span id="empty-sub">Click New and paste a link. Big files are split across several connections, so they finish sooner.</span>
+    </div>
+  </main>
+
+  <footer class="status">
+    <span id="st-left">Ready</span>
+    <span id="st-speed"></span>
+  </footer>
+</section>
+</div>
 
 <div id="toasts" role="status" aria-live="polite"></div>
 

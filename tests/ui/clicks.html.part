@@ -33,7 +33,7 @@ setTimeout(async()=>{ try{
   const n0=document.querySelectorAll("#list li").length;
   window.__listeners.removed({payload:"3"}); await wait();
   ck("removed event deletes the row",document.querySelectorAll("#list li").length===n0-1&&!liOf("bad.zip"));
-  ck("tab count updated",document.querySelector('#tabs [data-filter=all] b').textContent===String(n0-1));
+  ck("tab count updated",document.querySelector('#lib [data-lib=all] b').textContent===String(n0-1));
 
   // ================= the "New download" window =================
   const $=(id)=>document.getElementById(id), nd=$("newdl");
@@ -111,7 +111,7 @@ setTimeout(async()=>{ try{
   ck("a queued download shows no percent",q.querySelector(".pct").textContent==="—");
   btn(q,"Take out of the queue").click(); await wait(); ck("a queued download can be taken out of the queue",last()==='["pause",{"id":"4"}]');
   btn(q,"Delete download").click(); await wait(); ck("deleting a queued download asks first",JSON.stringify(txt(q))==='["Delete download","Cancel"]'); byText(q,"Cancel").click(); await wait();
-  ck("queued downloads count as in progress",document.querySelector('#tabs [data-filter=progress] b').textContent==="2");
+  ck("queued downloads count as in progress",document.querySelector('#lib [data-lib=incomplete] b').textContent==="2");
   ck("the status bar mentions what is waiting",/1 waiting/.test(document.getElementById("st-left").textContent));
 
   // ================= a group of links in one window =================
@@ -129,6 +129,104 @@ setTimeout(async()=>{ try{
   window.__listeners["new-download"]({payload:pv("p9")}); await wait(150);
   ck("the next single link gets its own fields back",shown($("nd-file-row"))&&shown($("nd-cat-row"))&&!shown($("nd-batch"))&&$("nd-title").textContent==="New download");
   $("nd-x").click(); await wait(80);
+
+  // ================= sidebar, toolbar, search, sort =================
+  [...rows.keys()].forEach(id=>window.__listeners.removed({payload:id})); await wait(50);
+  ck("with no downloads the empty state says so",shown($("empty"))&&$("empty-title").textContent==="No downloads yet");
+  const feed=[mk("a1","alpha.zip","completed",{total:300,downloaded:300}),mk("a2","beta.mp4","completed",{total:100,downloaded:100}),mk("a3","gamma.pdf","completed",{total:200,downloaded:200}),
+    mk("a4","delta.mp3","downloading",{total:400,downloaded:50,speed:10,conns:2}),mk("a5","epsilon.exe","failed",{total:500,downloaded:5,error:"Not found on the server (HTTP 404)"}),
+    mk("a6","zeta.mkv","paused",{total:50,downloaded:10}),mk("a7","eta.bin","completed",{total:10,downloaded:10})];
+  for(const r of feed) window.__listeners.dl({payload:r}); await wait(50);
+  const names=()=>[...document.querySelectorAll("#list li:not([hidden])")].map(l=>l.querySelector(".name").textContent);
+  const cnt=(sel,key)=>document.querySelector(`${sel} [data-${sel==="#lib"?"lib":"type"}=${key}] b`).textContent;
+  const libN=(k)=>document.querySelector(`#lib [data-lib=${k}] b`).textContent, typeN=(k)=>document.querySelector(`#types [data-type=${k}] b`).textContent;
+  ck("Library counts: all, incomplete, completed",libN("all")==="7"&&libN("incomplete")==="3"&&libN("completed")==="4");
+  ck("File type counts",typeN("all")==="7"&&typeN("doc")==="1"&&typeN("archive")==="1"&&typeN("audio")==="1"&&typeN("video")==="2"&&typeN("app")==="1"&&typeN("other")==="1");
+  ck("the sidebar has the Library and File types groups",[...document.querySelectorAll("#lib button span")].map(x=>x.textContent).join()==="All Downloads,Incomplete,Completed"&&[...document.querySelectorAll("#types button:not([hidden]) span")].map(x=>x.textContent).join()==="All Types,Documents,Compressed,Music,Video,Programs,Other");
+  ck("by default the newest download is first",names().join()==="eta.bin,zeta.mkv,epsilon.exe,delta.mp3,gamma.pdf,beta.mp4,alpha.zip");
+
+  document.querySelector("#lib [data-lib=incomplete]").click(); await wait(50);
+  ck("Incomplete shows what is not finished (running, paused, failed)",names().sort().join()==="delta.mp3,epsilon.exe,zeta.mkv");
+  ck("...and the file types are counted inside it",typeN("all")==="3"&&typeN("audio")==="1"&&typeN("video")==="1"&&typeN("archive")==="0");
+  ck("...and 'Other' hides itself when it has nothing",!shown(document.querySelector("#types [data-type=other]")));
+  document.querySelector("#types [data-type=video]").click(); await wait(50);
+  ck("a file type narrows the library",names().join()==="zeta.mkv");
+  document.querySelector("#types [data-type=archive]").click(); await wait(50);
+  ck("an empty combination explains itself",names().length===0&&shown($("empty"))&&/No compressed here/.test($("empty-title").textContent));
+  document.querySelector("#types [data-type=all]").click(); document.querySelector("#lib [data-lib=completed]").click(); await wait(50);
+  ck("Completed shows only finished downloads",names().sort().join()==="alpha.zip,beta.mp4,eta.bin,gamma.pdf");
+  ck("the chosen entries are marked",document.querySelector("#lib .on").dataset.lib==="completed"&&document.querySelector("#types .on").dataset.type==="all");
+  document.querySelector("#lib [data-lib=all]").click(); await wait(50);
+
+  const search=async(t)=>{ $("q").value=t; $("q").dispatchEvent(new Event("input")); await wait(50); return names(); };
+  ck("search finds by name, any case",(await search("BETA")).join()==="beta.mp4");
+  ck("search takes several words (name and address)",(await search("x/gamma pdf")).join()==="gamma.pdf");
+  ck("search with no match says so",(await search("nothing-like-this")).length===0&&/No matches/.test($("empty-title").textContent));
+  $("q").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})); await wait(50);
+  ck("Escape clears the search",$("q").value===""&&names().length===7);
+  ck("search works together with the sidebar",(document.querySelector("#lib [data-lib=completed]").click(),await search("a")).sort().join()==="alpha.zip,beta.mp4,eta.bin,gamma.pdf");
+  await search(""); document.querySelector("#lib [data-lib=all]").click(); await wait(50);
+
+  $("tb-sort").click(); await wait(30);
+  const sortItems=[...document.querySelectorAll("#sort-menu button")];
+  ck("Sort opens a menu with the choices, the current one marked",shown($("sort-menu"))&&sortItems.length===6&&sortItems[0].classList.contains("on")&&$("tb-sort").getAttribute("aria-expanded")==="true");
+  sortItems.find(b=>/^Name/.test(b.textContent)).click(); await wait(50);
+  ck("Sort by name",names().join()==="alpha.zip,beta.mp4,delta.mp3,epsilon.exe,eta.bin,gamma.pdf,zeta.mkv"&&!shown($("sort-menu")));
+  $("tb-sort").click(); await wait(30); [...document.querySelectorAll("#sort-menu button")].find(b=>/^Size/.test(b.textContent)).click(); await wait(50);
+  ck("Sort by size (largest first)",names().join()==="epsilon.exe,delta.mp3,alpha.zip,gamma.pdf,beta.mp4,zeta.mkv,eta.bin");
+  $("tb-sort").click(); await wait(30); [...document.querySelectorAll("#sort-menu button")].find(b=>/^Status/.test(b.textContent)).click(); await wait(50);
+  ck("Sort by status (active first)",names().join()==="delta.mp3,zeta.mkv,epsilon.exe,eta.bin,gamma.pdf,beta.mp4,alpha.zip");
+  $("tb-sort").click(); await wait(30); [...document.querySelectorAll("#sort-menu button")].find(b=>/oldest/.test(b.textContent)).click(); await wait(50);
+  ck("Sort by date, oldest first",names().join()==="alpha.zip,beta.mp4,gamma.pdf,delta.mp3,epsilon.exe,zeta.mkv,eta.bin");
+  ck("the choice is remembered",JSON.parse(localStorage.getItem("adm-view")).sort==="date-old");
+  window.__listeners.dl({payload:mk("a8","theta.zip","downloading",{total:10,downloaded:1})}); await wait(50);
+  ck("a new download goes where the sort puts it (oldest first: last)",names().pop()==="theta.zip");
+  $("tb-sort").click(); await wait(30); [...document.querySelectorAll("#sort-menu button")].find(b=>/newest/.test(b.textContent)).click(); await wait(50);
+  window.__listeners.removed({payload:"a8"}); await wait(50);
+  $("tb-sort").click(); await wait(30); document.body.click(); await wait(30);
+  ck("a click elsewhere closes the menu",!shown($("sort-menu")));
+
+  // Clear: finished downloads leave the list (not the disk), after one confirming click
+  const before=window.__calls.length;
+  $("tb-clear").click(); await wait(30);
+  ck("Clear asks first: it turns red and says how many",$("tb-clear").classList.contains("armed")&&/Clear 4\?/.test($("tb-clear").textContent)&&window.__calls.length===before);
+  $("tb-clear").click(); await wait(50);
+  const removes=window.__calls.slice(before).filter(c=>c[0]==="remove");
+  ck("the second click removes exactly the 4 finished downloads, keeping their files",removes.map(c=>c[1].id).sort().join()==="a1,a2,a3,a7"&&removes.every(c=>c[1].deleteFile===undefined));
+  ck("Clear goes back to normal",!$("tb-clear").classList.contains("armed")&&$("tb-clear").textContent.trim()==="Clear");
+  ["a1","a2","a3","a7"].forEach(id=>window.__listeners.removed({payload:id})); await wait(50);
+  $("tb-clear").click(); await wait(30);
+  ck("with nothing finished, Clear says so and does not arm",!$("tb-clear").classList.contains("armed")&&[...document.querySelectorAll("#toasts .toast")].some(t=>/Nothing to clear/.test(t.textContent)));
+
+  // the menu at the end of the toolbar
+  const c1=window.__calls.length;
+  $("tb-more").click(); await wait(30);
+  ck("the menu opens",shown($("more-menu"))&&document.querySelectorAll("#more-menu button").length===4);
+  [...document.querySelectorAll("#more-menu button")].find(b=>b.textContent==="Pause all").click(); await wait(50);
+  ck("Pause all pauses what is running",window.__calls.slice(c1).filter(c=>c[0]==="pause").map(c=>c[1].id).join()==="a4");
+  const c2=window.__calls.length; $("tb-more").click(); await wait(30);
+  [...document.querySelectorAll("#more-menu button")].find(b=>b.textContent==="Resume all").click(); await wait(50);
+  ck("Resume all resumes what is paused",window.__calls.slice(c2).filter(c=>c[0]==="resume").map(c=>c[1].id).join()==="a6");
+  const c3=window.__calls.length; $("tb-more").click(); await wait(30);
+  [...document.querySelectorAll("#more-menu button")].find(b=>b.textContent==="Retry failed downloads").click(); await wait(50);
+  ck("Retry failed retries only failed ones",window.__calls.slice(c3).filter(c=>c[0]==="resume").map(c=>c[1].id).join()==="a5");
+  const c4=window.__calls.length; $("tb-more").click(); await wait(30);
+  [...document.querySelectorAll("#more-menu button")].find(b=>b.textContent==="Clear failed downloads").click(); await wait(50);
+  ck("Clear failed removes only failed ones",window.__calls.slice(c4).filter(c=>c[0]==="remove").map(c=>c[1].id).join()==="a5");
+
+  // New: opens the link box
+  ck("the link box is out of the way until New is pressed",!shown($("add")));
+  $("tb-new").click(); await wait(30);
+  ck("New opens the link box and puts the cursor in it",shown($("add"))&&document.activeElement===$("url"));
+  $("tb-new").click(); await wait(30);
+  ck("New again closes it",!shown($("add")));
+  document.dispatchEvent(new KeyboardEvent("keydown",{key:"n",ctrlKey:true,bubbles:true})); await wait(30);
+  ck("Ctrl+N opens it too",shown($("add")));
+  $("url").value="https://a.example/z.zip"; $("add").requestSubmit(); await wait(100);
+  ck("adding a link closes the box again",!shown($("add"))&&$("url").value==="");
+  document.dispatchEvent(new KeyboardEvent("keydown",{key:"f",ctrlKey:true,bubbles:true})); await wait(30);
+  ck("Ctrl+F goes to the search box",document.activeElement===$("q"));
+  ck("the toolbar has New, Clear, Sort, Settings, Search",["tb-new","tb-clear","tb-sort","open-settings","q"].every(id=>shown($(id))));
 
   // ================= settings =================
   document.getElementById("open-settings").click(); await wait(100);
