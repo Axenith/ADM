@@ -2,7 +2,8 @@
 """Validates the browser extension and packs it into dist/adm-extension-<version>.zip (the file to upload to the
 Chrome Web Store, or to load unpacked after unzipping). Only runtime files go in: no tests, no store assets.
 
-    python3 packaging/build-extension.py
+    python3 packaging/build-extension.py           # for GitHub releases (load unpacked): keeps the pinned `key`
+    python3 packaging/build-extension.py --store   # for the Chrome Web Store: the same package without `key`
 """
 import json, os, struct, sys, zipfile
 
@@ -50,14 +51,19 @@ if problems:
     print("Cannot package the extension:\n  - " + "\n  - ".join(problems)); sys.exit(1)
 
 version = manifest["version"]
-out = os.path.join(ROOT, "dist", f"adm-extension-{version}.zip")
+store = "--store" in sys.argv
+# The Web Store gives an extension its own ID, so the development `key` that pins the unpacked one stays out of its package.
+manifest_bytes = open(os.path.join(EXT, "manifest.json"), "rb").read()
+if store:
+    manifest_bytes = (json.dumps({k: v for k, v in manifest.items() if k != "key"}, indent=2) + "\n").encode()
+out = os.path.join(ROOT, "dist", f"adm-extension-{version}{'-store' if store else ''}.zip")
 os.makedirs(os.path.dirname(out), exist_ok=True)
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     for rel in files:
         info = zipfile.ZipInfo(rel, date_time=(2026, 1, 1, 0, 0, 0))  # fixed time: the same files give the same zip
         info.compress_type = zipfile.ZIP_DEFLATED
         info.external_attr = 0o644 << 16
-        z.writestr(info, open(os.path.join(EXT, rel), "rb").read())
+        z.writestr(info, manifest_bytes if rel == "manifest.json" else open(os.path.join(EXT, rel), "rb").read())
 print(f"{manifest['name']} {version}: {len(files)} files, {os.path.getsize(out) / 1024:.0f} KiB -> {os.path.relpath(out, ROOT)}")
 print("  permissions:          ", ", ".join(manifest["permissions"]))
 print("  optional permissions: ", ", ".join(manifest.get("optional_permissions", [])), "+ hosts", manifest.get("optional_host_permissions"))

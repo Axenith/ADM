@@ -132,7 +132,7 @@ The Windows installer is built by [`.github/workflows/windows.yml`](.github/work
 - [Architecture](docs/ARCHITECTURE.md): how the engine, the app and the extension fit together, and how each part maps to XDM.
 - [ADM for AI agents](docs/AGENTS.md)
 - [Benchmark](docs/BENCHMARK.md)
-- [Release notes](docs/releases)
+- [Release notes](docs/releases) and the [Chrome Web Store submission kit](docs/chrome-web-store/LISTING.md)
 
 ## Development
 
