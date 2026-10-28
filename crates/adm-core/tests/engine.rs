@@ -321,7 +321,9 @@ async fn http_error_fails_fast() {
 #[tokio::test]
 async fn events_report_init_progress_and_completion() {
     let d = dirs();
-    let (addr, o) = spawn_server(Opts { size: 4 << 20, piece_delay: Duration::from_millis(2), ..Default::default() }).await;
+    // Progress is reported every 500 ms, so the download has to last longer than that for one to be sent at all:
+    // 8 connections x 16 pieces x 60 ms is about a second, however fast the machine is.
+    let (addr, o) = spawn_server(Opts { size: 4 << 20, piece_delay: Duration::from_millis(60), ..Default::default() }).await;
     let (h, mut rx) = engine(d.state.path()).start(DownloadRequest::new(1, format!("http://{addr}/ev.bin"), d.out.path()));
     let (mut init, mut progress, mut done) = (false, false, false);
     while let Ok(ev) = rx.recv().await {
