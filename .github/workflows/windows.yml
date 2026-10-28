@@ -47,6 +47,71 @@ jobs:
           Compress-Archive -Path "dist/portable/adm-$version-windows-x64" -DestinationPath "dist/adm-$version-windows-x64-portable.zip"
           Get-ChildItem dist/*.exe, dist/*.zip | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } | Set-Content dist/SHA256SUMS-windows.txt
           Get-ChildItem dist | Format-Table Name, Length
+      - name: Smoke test the installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Step($m) { Write-Host "== $m" }
+          $setup = (Get-ChildItem dist/*-setup.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'adm-install'
+
+          Step 'silent install'
+          Start-Process $setup -ArgumentList '/S', "/D=$dir" -Wait
+          foreach ($f in 'adm.exe', 'adm-dl.exe') { if (-not (Test-Path "$dir\$f")) { throw "the installer did not install $f" } }
+
+          Step 'the installer registered the browser launcher'
+          $key = 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\dev.adm.launcher'
+          if (-not (Test-Path $key)) { throw 'the browser launcher is not registered' }
+          $manifestPath = (Get-ItemProperty $key).'(default)'
+          $m = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          if ($m.path -ine "$dir\adm-dl.exe") { throw "the launcher points at $($m.path)" }
+          if ($m.allowed_origins[0] -ne 'chrome-extension://hncgajannlpkmglkanljjngglcjhbdnm/') { throw 'wrong allowed origin' }
+
+          Step 'the browser launcher starts ADM'
+          $psi = New-Object System.Diagnostics.ProcessStartInfo "$dir\adm-dl.exe", 'chrome-extension://hncgajannlpkmglkanljjngglcjhbdnm/'
+          $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.UseShellExecute = $false
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $body = [Text.Encoding]::UTF8.GetBytes('{"op":"start"}')
+          $in = $p.StandardInput.BaseStream
+          $in.Write([BitConverter]::GetBytes([uint32]$body.Length), 0, 4); $in.Write($body, 0, $body.Length); $in.Flush()
+          $out = $p.StandardOutput.BaseStream
+          $hdr = New-Object byte[] 4; $got = 0
+          while ($got -lt 4) { $got += $out.Read($hdr, $got, 4 - $got) }
+          $n = [BitConverter]::ToUInt32($hdr, 0); $buf = New-Object byte[] $n; $got = 0
+          while ($got -lt $n) { $got += $out.Read($buf, $got, $n - $got) }
+          $reply = [Text.Encoding]::UTF8.GetString($buf)
+          Write-Host "reply: $reply"
+          if ($reply -ne '{"ok":true,"running":false}') { throw "unexpected reply $reply" }
+          $up = $false
+          foreach ($i in 1..60) {
+            try { if ((Invoke-WebRequest http://127.0.0.1:8598/sync -UseBasicParsing -TimeoutSec 2).Content -match '"app":"adm"') { $up = $true; break } } catch {}
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not $up) { throw 'ADM did not start' }
+          if (-not (Get-Process adm -ErrorAction SilentlyContinue)) { throw 'no adm process' }
+
+          Step 'a real download with the command-line tool, checked against its checksum'
+          $data = Join-Path $env:RUNNER_TEMP 'serve'; New-Item -ItemType Directory -Force $data | Out-Null
+          $bytes = New-Object byte[] (6MB); (New-Object Random 7).NextBytes($bytes)
+          [IO.File]::WriteAllBytes("$data\file.bin", $bytes)
+          $hash = (Get-FileHash "$data\file.bin" -Algorithm SHA256).Hash.ToLower()
+          $srv = Start-Process python -ArgumentList '-m', 'http.server', '18099', '--bind', '127.0.0.1', '--directory', $data -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 2
+          $dl = Join-Path $env:RUNNER_TEMP 'got'
+          $result = & "$dir\adm-dl.exe" http://127.0.0.1:18099/file.bin -o $dl --sha256 $hash --json
+          Stop-Process -Id $srv.Id -Force
+          Write-Host $result
+          $r = $result | ConvertFrom-Json
+          if ($r.status -ne 'completed' -or $r.size_bytes -ne 6MB -or -not (Test-Path "$dl\file.bin")) { throw 'the download did not complete' }
+
+          Step 'uninstall'
+          Stop-Process -Name adm -Force
+          Start-Sleep -Seconds 2
+          Start-Process "$dir\uninstall.exe" -ArgumentList '/S' -Wait
+          foreach ($i in 1..30) { if (-not (Test-Path "$dir\adm.exe")) { break }; Start-Sleep -Seconds 1 }
+          if (Test-Path "$dir\adm.exe") { throw 'the uninstaller left adm.exe behind' }
+          if (Test-Path $key) { throw 'the uninstaller left the browser launcher registered' }
+          Step 'ok'
       - uses: actions/upload-artifact@v4
         with:
           name: adm-windows
