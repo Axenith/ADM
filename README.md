@@ -27,7 +27,7 @@ ADM splits each download across several connections, keeps going when your conne
 
 It is inspired by [XDM (Xtreme Download Manager)](https://github.com/subhra74/xdm), whose install size grew large because it bundles a Java runtime. ADM aims for the same behaviour at a fraction of the size.
 
-> **Status: early (0.1.0; the repository is ahead of that release).** It is used and tested on **Linux**. Windows and macOS builds are not verified yet. See the [roadmap](#roadmap).
+> **Status: early (0.2.0).** It is used and tested on **Linux**. Windows and macOS builds are not verified yet. See the [roadmap](#roadmap).
 
 ## Features
 
