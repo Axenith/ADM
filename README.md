@@ -27,7 +27,7 @@ ADM splits each download across several connections, keeps going when your conne
 
 It is inspired by [XDM (Xtreme Download Manager)](https://github.com/subhra74/xdm), whose install size grew large because it bundles a Java runtime. ADM aims for the same behaviour at a fraction of the size.
 
-> **Status: early (0.2.0).** It is used and tested on **Linux**. Windows and macOS builds are not verified yet. See the [roadmap](#roadmap).
+> **Status: early (0.2.0).** It is used and tested on **Linux**. A **Windows** build is made by CI but has had little real-world testing; macOS is not built yet. See the [roadmap](#roadmap).
 
 ## Features
 
@@ -87,6 +87,14 @@ Nice to have: a file manager that answers the standard `FileManager1` D-Bus call
 
 The tarball also contains `adm-dl`, a small command-line downloader that uses the same engine (and an MCP server for AI agents, see [docs/AGENTS.md](docs/AGENTS.md)):
 `adm-dl <url> -o <folder> -c 8 --limit <KiB/s>` (Ctrl-C pauses; run the same command to resume).
+
+### Windows (new, experimental)
+
+1. Download `adm-<version>-windows-x64-setup.exe` from [Releases](https://github.com/Axenith/ADM/releases/latest) (or the CI build's artifact) and run it. It installs for your user only, no administrator rights needed. Windows 10 and 11 already include the WebView2 runtime ADM uses; the installer fetches it if yours does not.
+2. The installer is **not code-signed yet**, so Windows SmartScreen may say "Windows protected your PC": click *More info*, then *Run anyway*.
+3. Load the browser extension as described below. ADM registers itself with Chrome, Edge, Brave and Chromium so the extension can start it.
+
+A portable `adm-<version>-windows-x64-portable.zip` (no installer, no browser registration) is built too. The Windows build is made by CI and has had little real-world testing: please report anything that misbehaves.
 
 ### Browser extension
 

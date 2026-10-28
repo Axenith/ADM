@@ -95,3 +95,7 @@ is a fresh implementation of the same well-known techniques (HTTP range requests
 line-by-line translation, so it is free of GPL obligations. Anything copied from `xdm-app` or the
 extension (UI code, extension JS) would make that part GPLv3. Pick ADM's license before publishing;
 if `xdm-core` code is ever ported directly, keep its NOTICE.
+
+## Windows
+
+The engine was written portable (positional writes through `seek_write`, Windows-safe file names, rename-based publishing). The app's platform parts: free space (`GetDiskFreeSpaceExW`), the folder chooser and the Recycle Bin (small PowerShell scripts, values passed through environment variables so no path is ever quoted into a script), and *Show in folder* (`explorer /select,`). The browser launcher is different from Linux: Windows browsers find a native messaging host through the registry (`HKCU\Software\<browser>\NativeMessagingHosts\dev.adm.launcher`), and the host must be a console program, so it is `adm-dl.exe` (`crates/adm-cli/src/host.rs`) installed next to the windowed `adm.exe`, which it starts with `--background`. The installer is a per-user NSIS setup built by Tauri (`src-tauri/tauri.windows.conf.json`; `adm-dl.exe` ships as a sidecar; NSIS hooks register and unregister the browsers). `.github/workflows/windows.yml` builds it and attaches it to a release.

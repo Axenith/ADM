@@ -10,6 +10,7 @@ pub const HOST_NAME: &str = "dev.adm.launcher";
 /// Extensions allowed to start ADM: the one in this repository (its key is pinned in manifest.json).
 const EXTENSION_IDS: &[&str] = &["hncgajannlpkmglkanljjngglcjhbdnm"];
 /// Browser folders under the config directory that read `NativeMessagingHosts/`.
+#[cfg(unix)]
 const BROWSERS: &[&str] = &["google-chrome", "google-chrome-beta", "chromium", "BraveSoftware/Brave-Browser", "microsoft-edge", "vivaldi"];
 
 /// Browsers start a native host with the calling extension's origin as the first argument.
@@ -61,9 +62,12 @@ fn start() -> Result<bool, String> {
     // Its own process group, so it is not taken down when the browser closes the host.
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(&mut cmd, 0x0000_0008 | 0x0000_0200); // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     cmd.spawn().map(|_| false).map_err(|e| e.to_string())
 }
 
+#[cfg(unix)]
 fn config_dir() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -87,6 +91,7 @@ fn manifest(exe: &std::path::Path) -> String {
 
 /// Tells every installed Chromium-family browser where this ADM is, so its extension can start it. Only browsers
 /// that have a profile folder already are touched. Returns the files written (or already right).
+#[cfg(unix)]
 pub fn register() -> Vec<PathBuf> {
     let (Some(base), Ok(exe)) = (config_dir(), std::env::current_exe()) else { return Vec::new() };
     let want = manifest(&exe);
@@ -107,10 +112,69 @@ pub fn register() -> Vec<PathBuf> {
 }
 
 /// Removes what `register` wrote (used by the uninstaller).
+#[cfg(unix)]
 pub fn unregister() {
     let Some(base) = config_dir() else { return };
     for b in BROWSERS {
         let _ = std::fs::remove_file(base.join(b).join("NativeMessagingHosts").join(format!("{HOST_NAME}.json")));
+    }
+}
+
+// ---- Windows ------------------------------------------------------------------------------------------------------
+// Browsers find a host through the registry, which points at a JSON file. The host program must be a console program
+// (a windowed one has no standard input or output), so it is `adm-dl.exe`, installed next to `adm.exe`: it answers the
+// same protocol and starts `adm.exe`.
+
+/// Registry keys (under HKEY_CURRENT_USER) that Chromium-family browsers read hosts from.
+#[cfg(windows)]
+const REGISTRY: &[&str] = &[
+    r"Software\Google\Chrome\NativeMessagingHosts",
+    r"Software\Chromium\NativeMessagingHosts",
+    r"Software\Microsoft\Edge\NativeMessagingHosts",
+    r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
+];
+
+#[cfg(windows)]
+fn reg(args: &[&std::ffi::OsStr]) -> bool {
+    use std::os::windows::process::CommandExt;
+    std::process::Command::new("reg").args(args).creation_flags(0x0800_0000).output().is_ok_and(|o| o.status.success())
+}
+
+#[cfg(windows)]
+fn manifest_file() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("ADM").join(format!("{HOST_NAME}.json")))
+}
+
+/// Writes the host file and points each browser's registry key at it. Returns the file.
+#[cfg(windows)]
+pub fn register() -> Vec<PathBuf> {
+    use std::ffi::OsStr;
+    let (Some(file), Ok(exe)) = (manifest_file(), std::env::current_exe()) else { return Vec::new() };
+    let host = exe.with_file_name("adm-dl.exe");
+    let host = if host.exists() { host } else { exe };
+    let want = manifest(&host);
+    if std::fs::read_to_string(&file).map_or(true, |have| have != want) {
+        if file.parent().is_none_or(|d| std::fs::create_dir_all(d).is_err()) || std::fs::write(&file, &want).is_err() {
+            return Vec::new();
+        }
+    }
+    for base in REGISTRY {
+        let key = format!(r"HKCU\{base}\{HOST_NAME}");
+        reg(&[OsStr::new("add"), OsStr::new(&key), OsStr::new("/ve"), OsStr::new("/t"), OsStr::new("REG_SZ"), OsStr::new("/d"), file.as_os_str(), OsStr::new("/f")]);
+    }
+    vec![file]
+}
+
+/// Removes the registry keys and the host file (used by the uninstaller).
+#[cfg(windows)]
+pub fn unregister() {
+    use std::ffi::OsStr;
+    for base in REGISTRY {
+        let key = format!(r"HKCU\{base}\{HOST_NAME}");
+        reg(&[OsStr::new("delete"), OsStr::new(&key), OsStr::new("/f")]);
+    }
+    if let Some(file) = manifest_file() {
+        let _ = std::fs::remove_file(file);
     }
 }
 

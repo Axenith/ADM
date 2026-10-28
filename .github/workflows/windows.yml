@@ -1,0 +1,63 @@
+name: Windows
+
+# Builds ADM for Windows: the engine tests on Windows, then the installer. The installer is a per-user NSIS setup that
+# also installs adm-dl.exe (the console program the browser starts to launch ADM) next to adm.exe.
+# On a published release, or when run by hand with a tag, the installer is attached to that release.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the installer to (leave empty to only build)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p adm-core --locked
+      - run: cargo build --release --locked -p adm-cli
+      # The sidecar the installer ships next to adm.exe (Tauri wants the target triple in its file name). The app's
+      # build refuses to start without it.
+      - run: Copy-Item target/release/adm-dl.exe src-tauri/binaries/adm-dl-x86_64-pc-windows-msvc.exe
+      - run: cargo test -p adm --locked
+      - run: npx --yes @tauri-apps/cli@2 build --ci -- --locked
+      - name: Collect the files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $setup = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $version = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "(.*)"').Matches[0].Groups[1].Value
+          Copy-Item $setup.FullName "dist/adm-$version-windows-x64-setup.exe"
+          # A portable copy: no install, no browser registration.
+          New-Item -ItemType Directory -Force "dist/portable/adm-$version-windows-x64" | Out-Null
+          Copy-Item target/release/adm.exe, target/release/adm-dl.exe, LICENSE, NOTICE "dist/portable/adm-$version-windows-x64/"
+          Compress-Archive -Path "dist/portable/adm-$version-windows-x64" -DestinationPath "dist/adm-$version-windows-x64-portable.zip"
+          Get-ChildItem dist/*.exe, dist/*.zip | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } | Set-Content dist/SHA256SUMS-windows.txt
+          Get-ChildItem dist | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: adm-windows
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/SHA256SUMS-windows.txt
+      - name: Attach to the release
+        if: github.event_name == 'release' || github.event.inputs.tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+        run: gh release upload $env:TAG (Get-ChildItem dist/*.exe, dist/*.zip, dist/SHA256SUMS-windows.txt) --clobber

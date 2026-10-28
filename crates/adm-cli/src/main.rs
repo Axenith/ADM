@@ -2,6 +2,7 @@
 //! resumes an interrupted download (Ctrl-C pauses and saves progress). `adm-dl mcp` serves the same engine to
 //! AI agents over the Model Context Protocol.
 
+mod host;
 mod jobs;
 mod mcp;
 
@@ -88,8 +89,14 @@ fn eta(secs: Option<u64>) -> String {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    if std::env::args().nth(1).as_deref() == Some("mcp") {
+    let first = std::env::args().nth(1);
+    if first.as_deref() == Some("mcp") {
         return mcp::run().await;
+    }
+    // The browser extension starting ADM (see host.rs): answer its one message and leave.
+    if host::is_host_launch(first.as_deref()) {
+        host::run();
+        return ExitCode::SUCCESS;
     }
     let args = match parse() {
         Ok(a) => a,

@@ -602,12 +602,28 @@ fn free_space_at(dir: &std::path::Path) -> Option<u64> {
     (unsafe { libc::statvfs(c.as_ptr(), &mut s) } == 0).then(|| s.f_bavail as u64 * s.f_frsize as u64)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn free_space_at(dir: &std::path::Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    unsafe extern "system" {
+        fn GetDiskFreeSpaceExW(dir: *const u16, available_to_caller: *mut u64, total: *mut u64, free: *mut u64) -> i32;
+    }
+    let mut p = dir;
+    while !p.exists() {
+        p = p.parent()?;
+    }
+    let wide: Vec<u16> = p.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let mut available = 0u64;
+    // SAFETY: `wide` is NUL-terminated and outlives the call; the other two pointers may be null.
+    (unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut available, std::ptr::null_mut(), std::ptr::null_mut()) } != 0).then_some(available)
+}
+
+#[cfg(not(any(unix, windows)))]
 fn free_space_at(_: &std::path::Path) -> Option<u64> {
     None
 }
 
-/// The "Browse..." button: a native folder chooser (`kdialog` or `zenity` on Linux). `Ok(None)` is "cancelled".
+/// The "Browse..." button: a native folder chooser (`kdialog` or `zenity` on Linux, a PowerShell dialog on Windows). `Ok(None)` is "cancelled".
 #[tauri::command]
 async fn browse_folder(start: String) -> Result<Option<String>, String> {
     tokio::task::spawn_blocking(move || pick_folder(&start)).await.map_err(|e| e.to_string())?
@@ -632,7 +648,32 @@ fn pick_folder(start: &str) -> Result<Option<String>, String> {
     Err("No folder chooser found (install kdialog or zenity). Type the folder path instead.".into())
 }
 
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+/// Runs a PowerShell script with no console window flashing up. `env` carries values into the script, so a path never
+/// has to be quoted into its text.
+#[cfg(windows)]
+fn powershell(script: &str, env: &[(&str, &std::ffi::OsStr)]) -> std::io::Result<std::process::Output> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut cmd = std::process::Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-NonInteractive", "-STA", "-Command", script]).creation_flags(CREATE_NO_WINDOW);
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    cmd.output()
+}
+
+#[cfg(windows)]
+fn pick_folder(start: &str) -> Result<Option<String>, String> {
+    let start = if std::path::Path::new(start).exists() { start.to_string() } else { std::env::var("USERPROFILE").unwrap_or_default() };
+    let script = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; \
+        $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Choose a folder'; $f.ShowNewFolderButton = $true; \
+        $f.SelectedPath = $env:ADM_START; if ($f.ShowDialog() -eq 'OK') { [Console]::Out.Write($f.SelectedPath) }";
+    let out = powershell(script, &[("ADM_START", start.as_ref())]).map_err(|e| format!("Could not open the folder chooser: {e}. Type the folder path instead."))?;
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok((out.status.success() && !path.is_empty()).then_some(path))
+}
+
+#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
 fn pick_folder(_: &str) -> Result<Option<String>, String> {
     Err("The folder chooser is not available here yet. Type the folder path instead.".into())
 }
@@ -712,6 +753,7 @@ fn open_with_system(target: PathBuf) {
 }
 
 /// `/home/me/My Files/a b.zip` -> `file:///home/me/My%20Files/a%20b.zip`
+#[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
 fn file_uri(path: &std::path::Path) -> String {
     let mut s = String::from("file://");
     for b in path.to_string_lossy().bytes() {
@@ -733,7 +775,14 @@ fn show_in_file_manager(path: PathBuf) {
     std::thread::spawn(move || {
         #[cfg(target_os = "windows")]
         {
-            let _ = std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).status();
+            use std::os::windows::process::CommandExt;
+            // Explorer wants the path in quotes after `/select,`, and answers with a failing exit code even when it worked.
+            if path.exists() {
+                let _ = std::process::Command::new("explorer").raw_arg(format!("/select,\"{}\"", path.display())).status();
+            } else {
+                let folder = path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| path.clone());
+                let _ = std::process::Command::new("explorer").arg(folder).status();
+            }
         }
         #[cfg(target_os = "macos")]
         {
@@ -767,7 +816,13 @@ fn move_to_trash(path: &std::path::Path) -> bool {
     {
         std::process::Command::new("gio").arg("trash").arg(path).status().is_ok_and(|s| s.success())
     }
-    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    #[cfg(windows)]
+    {
+        let script = "Add-Type -AssemblyName Microsoft.VisualBasic; \
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($env:ADM_FILE, 'OnlyErrorDialogs', 'SendToRecycleBin')";
+        powershell(script, &[("ADM_FILE", path.as_os_str())]).is_ok_and(|o| o.status.success())
+    }
+    #[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
     {
         let _ = path;
         false
